@@ -45,7 +45,9 @@ int main(int argc, char* argv[]){
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_port = htons(port);
     serv_addr.sin_addr.s_addr = INADDR_ANY;
-    
+    char hostname[1024];
+    gethostname(hostname,1024);
+    printf("%s\n",hostname);
     //Binds sockfd to info specified in serv_addr struct
     if (bind(socketfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
         pError("ERROR on bind");
