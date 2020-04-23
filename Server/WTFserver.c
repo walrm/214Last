@@ -5,6 +5,8 @@
 #include <netinet/in.h>
 #include <strings.h>
 
+#include<pthread.h>
+
 //Method to print error and return -1 as error
 void pError(char* err){
     printf("%s\n",err);
@@ -12,7 +14,8 @@ void pError(char* err){
 }
 
 //Handles communication between the server and client socket
-void clientServerInteract(int socket){
+void* clientServerInteract(void* socket_arg){
+    int socket = *(int *) socket_arg;
     int status;
     char buffer[256];
     
@@ -20,9 +23,7 @@ void clientServerInteract(int socket){
     status = read(socket, buffer, 255);
     if(status < 0)
         pError("ERROR reading from socket");
-
-    printf("Message: %s\n",buffer);
-
+    printf("Message From Client: %s\n",buffer);
     status = write(socket, "Message Received", 16);
     if(status < 0)
         pError("ERROR writing to socket");
@@ -45,29 +46,37 @@ int main(int argc, char* argv[]){
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_port = htons(port);
     serv_addr.sin_addr.s_addr = INADDR_ANY;
+
     char hostname[1024];
     gethostname(hostname,1024);
     printf("%s\n",hostname);
+    
     //Binds sockfd to info specified in serv_addr struct
     if (bind(socketfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
         pError("ERROR on bind");
     
     listen(socketfd,5); //socket accepts connections and has maximum backlog of 5
     
+    char hostname[1024];
+    gethostname(hostname,1024);
+    printf("%s\n",hostname);
+
     clilen = sizeof(cli_addr);
+    pthread_t threadID;
     //Client trying to connect and forks for each new client connecting
     while(1){
         newsocketfd = accept(socketfd, (struct sockaddr *) &cli_addr, &clilen);
         if(newsocketfd<0)
             pError("ERROR on accept");
-        pid = fork();
-        if(pid<0)
-            pError("ERROR on fork");
-        if(pid == 0){
-            close(socketfd);
-            clientServerInteract(newsocketfd);
-            exit(0);
-        }else close(newsocketfd);
+        
+        if(pthread_create(&threadID,NULL,clientServerInteract,(void*)&newsocketfd) < 0)
+            pError("ERROR on creating thread");
+            
+        // if(pid == 0){
+        //     close(socketfd);
+        //     clientServerInteract(newsocketfd);
+        //     exit(0);
+        // }else close(newsocketfd);
     }
     return 0;
 }
