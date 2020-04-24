@@ -73,13 +73,6 @@ int checkConnection()
     free(fileInfo);
     free(ip);
     free(host);
-<<<<<<< HEAD
-=======
-    // write(sockfd, "test123", 7);
-    
-    // char str[100];
-    // int i;
->>>>>>> 88513f258ee35281e5bc485627a46b90c6350c0a
     return sockfd;
 }
 
@@ -98,14 +91,8 @@ void create(char *projectName)
     }
 
     int writeLen = 7 + strlen(projectName);
-<<<<<<< HEAD
     char* combined=malloc(writeLen);
     memset(combined,0,7);
-=======
-    //  write(socketFD, ("create %s", projectName), 7 + strlen(projectName));
-    char* combined=malloc(writeLen);
-    bzero(combined,writeLen);
->>>>>>> 88513f258ee35281e5bc485627a46b90c6350c0a
     strcat(combined,"create ");
     strcat(combined,projectName);
     printf("%s\n",combined);
@@ -113,16 +100,10 @@ void create(char *projectName)
     char created[1];
 
     char s[17];
-<<<<<<< HEAD
     read(socketFD,s,16);
     s[17]='\0';
     printf("%s\n",s);
-=======
-    read(socketFD, s, 16);
-    s[17] = '\0';
-    printf("%s\n", s);
->>>>>>> 88513f258ee35281e5bc485627a46b90c6350c0a
-
+        
     read(socketFD, created, 1);
     int c = atoi(created);
     printf("%d\n",c);
@@ -133,13 +114,8 @@ void create(char *projectName)
     }
     else
     {
-<<<<<<< HEAD
         int sys = mkdir(projectName,00777);
         printf("Project created on the server");
-=======
-        int sys = system(("mkdir \"%s\"", projectName)); //sys is 0 if the directory is created successfully. Might use later to print error, but probably not
-        printf("Project created on the server\n");
->>>>>>> 88513f258ee35281e5bc485627a46b90c6350c0a
     }
     char bytesofIntC[1];
     read(socketFD, bytesofIntC, 1);
