@@ -5,7 +5,8 @@
 #include <netinet/in.h>
 #include <string.h>
 #include <dirent.h>
-#include<pthread.h>
+#include <pthread.h>
+#include <fcntl.h>
 
 struct thread{
     int threadNum;
@@ -40,7 +41,7 @@ void* clientServerInteract(void* socket_arg){
     char* projectName;
     memcpy(projectName, &buffer[7], strlen(buffer)-6);
     projectName[strlen(projectName)]='\0'; //Grabbing project name from the client side
-    printf("project name: %s\n", projectName);
+    printf("Project Name: %s\n", projectName);
 
     //opens (repository) directory from root path
     DIR *cwd = opendir("./");          
@@ -55,7 +56,22 @@ void* clientServerInteract(void* socket_arg){
                 pError("ERROR. Project already exists in repository");
         }
     }while(currentINode!=NULL);
-    mkdir(projectName,0700); //Project doesn't already exist, create project folder
+
+    //Project doesn't already exist, create project folder
+    mkdir(projectName,0700); 
+    char* path = malloc(strlen(projectName)+12);
+    path[0] = '.';
+    path[1] = '/';
+    strcat(path,projectName);
+    char manifest[10] = "/.Manifest";
+    strcat(path,manifest);
+    printf("PROJECT PATH to Manifest: %s\n", path);
+
+    //Create .Manifest file
+    int manifestFD = open(path, O_CREAT | O_RDWR, 00777);
+    write(manifestFD,"0\n",1);   
+    //cwd = opendir()
+    
 }
 
 int main(int argc, char* argv[]){
@@ -102,13 +118,15 @@ int main(int argc, char* argv[]){
         
         if(pthread_create(&threadID,NULL,clientServerInteract,&t) < 0)
             pError("ERROR on creating thread");
-            
-        // if(pid == 0){
-        //     close(socketfd);
-        //     clientServerInteract(newsocketfd);
-        //     exit(0);
-        // }else close(newsocketfd);
     }
+
+    /*TODO: CATCH EXIT SIGNAL AND DO ALL THESE CLOSES 
+    if(pid == 0){
+        close(socketfd);
+        clientServerInteract(newsocketfd);
+        exit(0);
+    }else close(newsocketfd);
+    */
     return 0;
 }
 
