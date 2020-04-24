@@ -24,6 +24,7 @@ void create(char* projectName, int socket){
             }
         }
     }while(currentINode!=NULL); //project doesn't exist
+    write(socket,"1",1);
     mkdir(projectName,0700); //creates project with parameter projectName
     char* manifestPath = malloc(strlen(projectName)+13);
     manifestPath[0] = '.';
