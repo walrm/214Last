@@ -73,12 +73,10 @@ int checkConnection()
     free(fileInfo);
     free(ip);
     free(host);
-    //write(sockfd, "test123", 7);
-    char s[16];
-    read(sockfd, s, 16);
-    printf("%s\n", s);
-    char str[100];
-    int i;
+    // write(sockfd, "test123", 7);
+    
+    // char str[100];
+    // int i;
     return sockfd;
 }
 
@@ -96,8 +94,20 @@ void create(char *projectName)
         return;
     }
     int writeLen = 7 + strlen(projectName);
-    write(socketFD, ("create %s", projectName), 7 + strlen(projectName));
+    //  write(socketFD, ("create %s", projectName), 7 + strlen(projectName));
+    char* combined=malloc(writeLen);
+    bzero(combined,writeLen);
+    strcat(combined,"create ");
+    strcat(combined,projectName);
+    printf("%s\n",combined);
+    write(socketFD, combined,writeLen);
     char created[1];
+
+    char s[17];
+    read(socketFD, s, 16);
+    s[17] = '\0';
+    printf("%s\n", s);
+
     read(socketFD, created, 1);
     int c = atoi(created);
     if (!c)
@@ -108,7 +118,7 @@ void create(char *projectName)
     else
     {
         int sys = system(("mkdir \"%s\"", projectName)); //sys is 0 if the directory is created successfully. Might use later to print error, but probably not
-        printf("Project created on the server");
+        printf("Project created on the server\n");
     }
     char bytesofIntC[1];
     read(socketFD, bytesofIntC, 1);
