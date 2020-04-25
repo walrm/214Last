@@ -10,7 +10,6 @@
 #include <sys/stat.h>
 #include <math.h>
 #include <openssl/md5.h>
-
 /**
  * $C-File is changed
  * $D-File is deleted
@@ -80,6 +79,10 @@ int checkConnection()
         printf("Error connecting to host\n");
         return -1;
     }
+    write(sockfd,"Established Connection",22);
+    char reading[23];
+    read(sockfd,reading,22);
+    printf("%s\n",reading);
     free(fileInfo);
     free(ip);
     free(host);
@@ -106,10 +109,6 @@ void create(char *projectName)
     strcat(combined, projectName);
     write(socketFD, combined, writeLen);
     char created[1];
-    char s[17];
-    read(socketFD, s, 16);
-    s[16] = '\0';
-    printf("%s\n", s);
 
     read(socketFD, created, 1);
     int c = atoi(created);
@@ -204,7 +203,7 @@ void currentVersion(char *projectName)
 
 void add(char *projectName, char *fileName)
 {
-    /**
+    /*
      * Make sure the file and project exist. If not quit
      * 
      */
