@@ -10,7 +10,6 @@
 #include <sys/stat.h>
 #include <math.h>
 #include <openssl/md5.h>
-
 /**
  * $C-File is changed
  * $D-File is deleted
@@ -80,6 +79,10 @@ int checkConnection()
         printf("Error connecting to host\n");
         return -1;
     }
+    write(sockfd,"Established Connection",22);
+    char reading[23];
+    read(sockfd,reading,22);
+    printf("%s\n",reading);
     free(fileInfo);
     free(ip);
     free(host);
@@ -106,10 +109,14 @@ void create(char *projectName)
     strcat(combined, projectName);
     write(socketFD, combined, writeLen);
     char created[1];
+<<<<<<< Updated upstream
+=======
+    
     char s[17];
     read(socketFD, s, 16);
     s[16] = '\0';
     printf("%s\n", s);
+>>>>>>> Stashed changes
 
     read(socketFD, created, 1);
     int c = atoi(created);
@@ -170,11 +177,19 @@ void destroy(char *projectName)
     {
         return;
     }
-    int prLen = strlen(projectName);
-    write(serverFD, ("6%s", projectName), (1 + prLen));
+    int prLen = strlen(projectName) + 1;
+    //write(serverFD, ("6%s", projectName), (1 + prLen));
+    char *combined = malloc(prLen);
+    memset(combined, 0, 7);
+    strcat(combined, "6");
+    strcat(combined, projectName);
+    write(serverFD, combined, prLen);
+
     char passC[1];
     read(serverFD, passC, 1);
+    printf("PASSC: %s\n", passC);
     int pass = atoi(passC);
+    printf("PASS: %d\n", pass);
     if (pass == 0)
     {
         printf("Project does not exist in the server\n");
@@ -202,55 +217,55 @@ void currentVersion(char *projectName)
  *  Takes in a project name and a file name and adds it to the manifest
  */
 
-// void add(char *projectName, char *fileName)
-// {
-//     /**
-//      * Make sure the file and project exist. If not quit
-//      * 
-//      */
-//     int socketFD = checkConnection();
-//     if (socketFD == -1)
-//     {
-//         return;
-//     }
-//     int manifestFD = open(("%s/.manifest", projectName), O_RDWR, 00777);
-//     int bytesRead = 0;
-//     char fileNameRead[1];
-//     char *totalBytesRead = malloc(1);
-//     int readFile = 0;
-//     char *filePath = calloc(strlen(projectName) + strlen(fileName) + 2, sizeof(char));
-//     strcpy(filePath, projectName);
-//     strcat(filePath, "/");
-//     strcat(filePath, fileName);
-//     while (bytesRead > -1)
-//     {
-//         read(manifestFD, fileNameRead, 1);
-//         if (readFile && fileNameRead[0] == ' ')
-//         {
-//             if (strcmp(totalBytesRead, filePath) == 0)
-//             {
-//                 printf("Warning, the file already exists in the manifest\n");
-//                 return;
-//             }
-//         }
-//         else if (fileNameRead[0] == ' ')
-//         {
-//         }
-//         else if (fileNameRead[0] == '\n')
-//         {
-//             readFile = 0;
-//             totalBytesRead = realloc(totalBytesRead, 1);
-//         }
-//         if (readFile)
-//         {
-//             char *temp = malloc(strlen(totalBytesRead));
-//             strcpy(temp, totalBytesRead);
-//             totalBytesRead = realloc(totalBytesRead, strlen(temp) + 1);
-//             strcpy(totalBytesRead, temp);
-//             free(temp);
-//         }
-//     }
-//     close(manifestFD);
+void add(char *projectName, char *fileName)
+{
+    /*
+     * Make sure the file and project exist. If not quit
+     * 
+     */
+    int socketFD = checkConnection();
+    if (socketFD == -1)
+    {
+        return;
+    }
+    int manifestFD = open(("%s/.manifest", projectName), O_RDWR, 00777);
+    int bytesRead = 0;
+    char fileNameRead[1];
+    char *totalBytesRead = malloc(1);
+    int readFile = 0;
+    char *filePath = calloc(strlen(projectName) + strlen(fileName) + 2, sizeof(char));
+    strcpy(filePath, projectName);
+    strcat(filePath, "/");
+    strcat(filePath, fileName);
+    while (bytesRead > -1)
+    {
+        read(manifestFD, fileNameRead, 1);
+        if (readFile && fileNameRead[0] == ' ')
+        {
+            if (strcmp(totalBytesRead, filePath) == 0)
+            {
+                printf("Warning, the file already exists in the manifest\n");
+                return;
+            }
+        }
+        else if (fileNameRead[0] == ' ')
+        {
+        }
+        else if (fileNameRead[0] == '\n')
+        {
+            readFile = 0;
+            totalBytesRead = realloc(totalBytesRead, 1);
+        }
+        if (readFile)
+        {
+            char *temp = malloc(strlen(totalBytesRead));
+            strcpy(temp, totalBytesRead);
+            totalBytesRead = realloc(totalBytesRead, strlen(temp) + 1);
+            strcpy(totalBytesRead, temp);
+            free(temp);
+        }
+    }
+    close(manifestFD);
 
 //     manifestFD = open(("%s/.manifest", projectName), O_RDWR | O_APPEND, 00777);
 //     char *fileP = malloc(strlen(fileName) + 2);

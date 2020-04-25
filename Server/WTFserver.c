@@ -13,6 +13,7 @@
 
 #include "serverFunctions.h"
 
+
 //Method to print error and return -1 as error
 void pError(char* err){
     printf("%s\n",err);
@@ -37,11 +38,14 @@ void* clientServerInteract(void* socket_arg){
     }
 
     printf("Message From Client: %s\n", buffer);
-    status = write(socket, "Message Received", 16);
+    status = write(socket, "Established Connection", 22);
 
     if(status < 0){
         pError("ERROR writing to socket");
     }
+
+    bzero(buffer,256);
+    status = read(socket, buffer, 255);
 
     //very inefficent way of locking and unlocking- should do for each project instead of whole repository
     pthread_mutex_t lock;
@@ -78,10 +82,12 @@ void* clientServerInteract(void* socket_arg){
 
                 //Found project and delete using sys call
                 if(strcmp(currentINode->d_name,projectName)==0){
-                    char* systemCall = malloc(4+strlen(projectName));
-                    strcat(systemCall,"rm ");
+                    char* systemCall = malloc(8+strlen(projectName));
+                    strcat(systemCall,"rm -rf ");
                     strcat(systemCall,projectName);
                     printf("System command: %s\n",systemCall);
+                    if(system(systemCall)<0)
+                        pError("ERROR on destroy rm");
                     write(socket,"1",1); 
                     return;
                 }
@@ -131,6 +137,7 @@ int main(int argc, char* argv[]){
     pthread_t threadID;
 
     signal(SIGINT, stopServer);
+
     printf("Waiting for Client Connection...\n");
     //Client trying to connect and forks for each new client connecting
     while(1){
