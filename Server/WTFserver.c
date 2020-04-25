@@ -25,6 +25,89 @@ void stopServer(int sigNum){
     exit(1);
 }
 
+//Grabbing project name from the client side
+char* getProjectName(char* buffer){
+    char* projName = malloc(strlen(buffer)-1);
+    memcpy(projName, &buffer[1], strlen(buffer));
+    projName[strlen(projName)]='\0'; 
+    return projName;
+}
+
+//Helper function for delete - recursively delete files and directories in project folder
+void destroyProject(char* path){
+    DIR *cwd = opendir(path);
+    struct dirent *currentINode = NULL;
+    do{
+        currentINode = readdir(cwd);
+        if(currentINode!=NULL && currentINode->d_type == DT_DIR){
+            if (strcmp(currentINode->d_name, ".") == 0 || strcmp(currentINode->d_name, "..") == 0)
+                    continue;
+            
+            //Step into directory and delete all directories/files
+            char nextPath[PATH_MAX];
+            strcpy(nextPath, path);
+            strcat(strcat(nextPath, "/"), currentINode->d_name); //appends directory name to path
+            destroyProject(nextPath);
+
+            //Find full path of directory and remove after it has been emptied
+            char* dirpath = malloc(strlen(path)+strlen(currentINode->d_name)+3);
+            strcpy(dirpath,path);
+            strcat(dirpath,"/");
+            strcat(dirpath,currentINode->d_name); 
+            rmdir(dirpath);
+            free(dirpath);
+
+        //INode is a file
+        }else if(currentINode!=NULL){
+            char* file = malloc(strlen(path)+strlen(currentINode->d_name)+2);
+            strcpy(file, path);
+            strcat(file,"/");
+            strcat(file,currentINode->d_name); //appends file name to path
+            file[strlen(file)] = '\0';
+            printf("FILE PATH: %s\n", file);
+            if(remove(file)<0)
+                pError("ERROR removing file");
+
+            free(file);
+        }
+    }while(currentINode!=NULL); 
+
+    closedir(cwd); 
+}
+
+//Deletes project folder in repository 
+void delete(char* projectName, int socket){
+    DIR *cwd = opendir("./");
+    struct dirent *currentINode = NULL;
+    do{
+        currentINode = readdir(cwd);
+        if(currentINode!=NULL && currentINode->d_type == DT_DIR){
+            if (strcmp(currentINode->d_name, ".") == 0 || strcmp(currentINode->d_name, "..") == 0)
+                    continue;
+
+            //Found project and delete using sys call
+            if(strcmp(currentINode->d_name,projectName)==0){
+                char* path = malloc(strlen(projectName)+3);
+                path[0] = '.';
+                path[1] = '/';
+                strcat(path,projectName);
+                printf("PATH: %s\n", path);
+                destroyProject(path);
+                rmdir(path);
+                write(socket,"1",1); 
+                free(path);
+                close(socket);
+                closedir(cwd);
+                return;
+            }
+        }
+    }while(currentINode!=NULL); 
+    write(socket,"0",1); //project doesn't exist, return error to client
+    close(socket);
+    closedir(cwd);
+}
+
+
 //Handles communication between the server and client socket
 void* clientServerInteract(void* socket_arg){
     int socket = *(int *) socket_arg;
@@ -55,48 +138,15 @@ void* clientServerInteract(void* socket_arg){
     printf("command: %d\n",command);
     pthread_mutex_lock(&lock);
     if(command == 5){ //Create Command
-        //Grabbing project name from the client side calling create function
-        char* projectName = malloc(strlen(buffer)-1);
-        memcpy(projectName, &buffer[1], strlen(buffer));
-        projectName[strlen(projectName)]='\0'; 
+        char* projectName = getProjectName(buffer);
         printf("Project Name: %s\n", projectName);
         create(projectName, socket);
         free(projectName);
     }else if(command == 6){ //Delete Command
-        //Grabbing project name from the client side calling create function
-        char* projectName = malloc(strlen(buffer)-1);
-        memcpy(projectName, &buffer[1], strlen(buffer));
-        projectName[strlen(projectName)]='\0'; 
+        char* projectName = getProjectName(buffer);
         printf("Project Name: %s\n", projectName);
-        // delete(projectName, socket);
-        // free(projectName);
-
-        //TODO: Delete function for Server side, find project name and rm using sys call
-        DIR *cwd = opendir("./");
-        struct dirent *currentINode = NULL;
-        do{
-            currentINode = readdir(cwd);
-            if(currentINode!=NULL && currentINode->d_type == DT_DIR){
-                if (strcmp(currentINode->d_name, ".") == 0 || strcmp(currentINode->d_name, "..") == 0)
-                        continue;
-
-                //Found project and delete using sys call
-                if(strcmp(currentINode->d_name,projectName)==0){
-                    char* systemCall = malloc(8+strlen(projectName));
-                    strcat(systemCall,"rm -rf ");
-                    strcat(systemCall,projectName);
-                    printf("System command: %s\n",systemCall);
-                    if(system(systemCall)<0)
-                        pError("ERROR on destroy rm");
-                    write(socket,"1",1); 
-                    return;
-                }
-
-            }
-        }while(currentINode!=NULL); 
-        
-        //project doesn't exist, return error
-        write(socket,"0",1);
+        delete(projectName, socket);
+        free(projectName);
     }
     pthread_mutex_unlock(&lock);
 }
