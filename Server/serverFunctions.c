@@ -6,7 +6,7 @@
 
 #include "serverFunctions.h"
 
-//TODO: writing server side create function; Need to free 3 memory allocations
+//Create command, creates new project in repository with manifest, writes manifest information to client
 void create(char* projectName, int socket){
     //opens (repository) directory from root path and looks if project already exists
     DIR *cwd = opendir("./");
@@ -29,7 +29,7 @@ void create(char* projectName, int socket){
     
     write(socket,"1",1); //Write to client that project has been created
     
-    //creates project with parameter projectName and create the project's manifest file
+    //Creates project with parameter projectName and create the project's manifest file
     mkdir(projectName,0700); 
     char* manifestPath = malloc(strlen(projectName)+13);
     manifestPath[0] = '.';
@@ -37,7 +37,6 @@ void create(char* projectName, int socket){
     strcat(manifestPath,projectName);
     char m[10] = "/.Manifest";
     strcat(manifestPath, m);
-    printf("PROJECT PATH to Manifest: %s\n", manifestPath);
     int manifestFD = open(manifestPath, O_CREAT | O_RDWR, 00777); 
     write(manifestFD,"0\n",1);  //Writing version number 0 on the first line
 
@@ -51,6 +50,13 @@ void create(char* projectName, int socket){
     int size = manStats.st_size; 
     int bytesRead = 0, bytesToRead = 0;
     char manBuffer[256];
+
+    //Send size of manifest file to client
+    sprintf(manBuffer,"%d", size);
+    write(socket,manBuffer,strlen(manBuffer));
+    write(socket," ",1);
+
+    //Send manifest bytes to client
     while(size > bytesRead){
         bytesToRead = (size-bytesRead<256)? size-bytesRead : 255;
         bzero(manBuffer,256);
