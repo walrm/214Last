@@ -37,6 +37,7 @@ void* clientServerInteract(void* socket_arg){
         pError("ERROR writing to socket");
     }
 
+    if(strlen(buffer)>5)
     //TESTING CREATE FUNCTION
     char* projectName = malloc(strlen(buffer)-6);
     memcpy(projectName, &buffer[7], strlen(buffer)-6);

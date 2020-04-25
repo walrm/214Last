@@ -9,7 +9,6 @@
 //TODO: writing server side create function; Need to free 3 memory allocations
 void create(char* projectName, int socket){
     //opens (repository) directory from root path and looks if project already exists
-    char* manifestPath;
     DIR *cwd = opendir("./");
     struct dirent *currentINode = NULL;
     do{
@@ -17,26 +16,29 @@ void create(char* projectName, int socket){
         if(currentINode!=NULL && currentINode->d_type == DT_DIR){
             if (strcmp(currentINode->d_name, ".") == 0 || strcmp(currentINode->d_name, "..") == 0)
                     continue;
-            printf("%s\n",currentINode->d_name);
-            //Let client know there was an error, project already exists with name
+
+            //Let client know there was an error, project already exists with given name
             if(strcmp(currentINode->d_name,projectName)==0){
                 write(socket,"0",1); 
                 printf("ERROR SENT\n");
                 return;
             }
+
         }
     }while(currentINode!=NULL); //project doesn't exist
-    write(socket,"1",1);
-    mkdir(projectName,0700); //creates project with parameter projectName
-    manifestPath = malloc(strlen(projectName)+13);
+    
+    write(socket,"1",1); //Write to client that project has been created
+    
+    //creates project with parameter projectName and create the project's manifest file
+    mkdir(projectName,0700); 
+    char* manifestPath = malloc(strlen(projectName)+13);
     manifestPath[0] = '.';
     manifestPath[1] = '/';
     strcat(manifestPath,projectName);
     char m[10] = "/.Manifest";
     strcat(manifestPath, m);
     printf("PROJECT PATH to Manifest: %s\n", manifestPath);
-
-    int manifestFD = open(manifestPath, O_CREAT | O_RDWR, 00777); //Create .Manifest file
+    int manifestFD = open(manifestPath, O_CREAT | O_RDWR, 00777); 
     write(manifestFD,"0\n",1);  //Writing version number 0 on the first line
 
     struct stat manStats;
@@ -45,7 +47,8 @@ void create(char* projectName, int socket){
         pError("ERROR reading manifest stats");
     }
 
-    int size = manStats.st_size; //size of manifest file
+    //Sending manifest file over by writing to socket
+    int size = manStats.st_size; 
     int bytesRead = 0, bytesToRead = 0;
     char manBuffer[256];
     while(size > bytesRead){
@@ -54,6 +57,11 @@ void create(char* projectName, int socket){
         bytesRead += read(manifestFD,manBuffer,bytesToRead);
         write(socket,manBuffer,bytesToRead);
     }
+    
+    free(manifestPath);
+    closedir(cwd);
+    close(socket);
+    close(manifestFD);
 }
 
 // void writeProjPath(char* projectPath, int manifestFD){

@@ -100,10 +100,10 @@ void create(char *projectName)
     char created[1];
 
     char s[17];
-    read(socketFD,s,16);
-    s[17]='\0';
-    printf("%s\n",s);
-        
+    read(socketFD, s, 16);
+    s[16] = '\0';
+    printf("%s\n", s);
+
     read(socketFD, created, 1);
     int c = atoi(created);
     printf("%d\n",c);
