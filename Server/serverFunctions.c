@@ -55,6 +55,8 @@ void create(char* projectName, int socket){
     sprintf(manBuffer,"%d", size);
     write(socket,manBuffer,strlen(manBuffer));
     write(socket," ",1);
+    printf("manBuffer: %s\n",manBuffer);
+    printf("manBuffer size: %d\n", strlen(manBuffer));
 
     //Send manifest bytes to client
     while(size > bytesRead){

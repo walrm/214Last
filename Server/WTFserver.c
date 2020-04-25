@@ -90,7 +90,7 @@ void* clientServerInteract(void* socket_arg){
         }while(currentINode!=NULL); 
         
         //project doesn't exist, return error
-
+        write(socket,"0",1);
     }
     pthread_mutex_unlock(&lock);
 }
