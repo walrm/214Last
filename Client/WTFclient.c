@@ -9,9 +9,19 @@
 #include <netdb.h>
 #include <sys/stat.h>
 #include <math.h>
+#include <openssl/md5.h>
 
-int min(int a, int b){
-    if(a>b){
+/**
+ * $C-File is changed
+ * $D-File is deleted
+ * $A-File is added
+ * 0-Create
+ * 
+ */
+int min(int a, int b)
+{
+    if (a > b)
+    {
         return b;
     }
     return b;
@@ -75,7 +85,6 @@ int checkConnection()
     free(host);
     return sockfd;
 }
-
 /**
  * Connects to the server and sends a message to create a project. 
  * The server then creates the project if it does not exist and if it does exist, returns an error
@@ -90,15 +99,13 @@ void create(char *projectName)
         return;
     }
 
-    int writeLen = 7 + strlen(projectName);
-    char* combined=malloc(writeLen);
-    memset(combined,0,7);
-    strcat(combined,"create ");
-    strcat(combined,projectName);
-    printf("%s\n",combined);
-    write(socketFD, combined,writeLen);
+    int writeLen = 1 + strlen(projectName);
+    char *combined = malloc(writeLen);
+    memset(combined, 0, 7);
+    strcat(combined, "5");
+    strcat(combined, projectName);
+    write(socketFD, combined, writeLen);
     char created[1];
-
     char s[17];
     read(socketFD, s, 16);
     s[16] = '\0';
@@ -106,7 +113,6 @@ void create(char *projectName)
 
     read(socketFD, created, 1);
     int c = atoi(created);
-    printf("%d\n",c);
     if (!c)
     {
         printf("Project already exists in the server\n");
@@ -114,68 +120,170 @@ void create(char *projectName)
     }
     else
     {
-        int sys = mkdir(projectName,00777);
-        printf("Project created on the server");
+        int sys = mkdir(projectName, 00777);
+        printf("Project created on the server\n");
     }
-    char bytesofIntC[1];
-    read(socketFD, bytesofIntC, 1);
-    int bytesofInt = atoi(bytesofIntC);
-    char totalBytesC[bytesofInt];
-    read(socketFD, totalBytesC, bytesofInt);
-    int totalBytes = atoi(totalBytesC);
-    int manifestFD = open(("%s/.manifest", projectName), O_CREAT | O_RDWR, 00777);
-    int totalBytesRead=0;
+    char *gettingTotalBytes = malloc(1);
+    char *i = malloc(5);
+    bzero(i, 5);
+    int z = 0;
+    do
+    {
+        read(socketFD, gettingTotalBytes, 1);
+        z++;
+        if (gettingTotalBytes[0] != ' ')
+        {
+            strcat(i, gettingTotalBytes);
+        }
+    } while (gettingTotalBytes[0] != ' ');
+    int totalBytes = atoi(i);
+    char *string = malloc(11 + strlen(projectName));
+    bzero(string, 11 + strlen(projectName));
+    strcat(string, projectName);
+    strcat(string, "/.manifest");
+    printf("%s\n", string);
+    string[strlen(string)] = '\0';
+    int manifestFD = open(string, O_CREAT | O_RDWR, 00777);
+    int totalBytesRead = 0;
     while (totalBytes > totalBytesRead)
     {
-        int bytesToRead=min((totalBytes-totalBytesRead),2048);
+        int bytesToRead = min((totalBytes - totalBytesRead), 2048);
         char *manifest[bytesToRead];
-        int bytesRead=read(socketFD, manifest, bytesToRead);
+        int bytesRead = read(socketFD, manifest, bytesToRead);
         write(manifestFD, manifest, bytesRead);
-        totalBytesRead+=bytesRead;
+        totalBytesRead += bytesRead;
     }
+    free(string);
+    free(gettingTotalBytes);
+    free(i);
+    free(combined);
     closeConnection(socketFD);
 }
 /**
  * Deletes a project repository on the server. Does not change it on the client's machine
  * If connection failed or if the project does not exist, print an error
  */
-void destroy(char* projectName){
-    int serverFD=checkConnection;
-    if(serverFD==-1){
+void destroy(char *projectName)
+{
+    int serverFD = checkConnection();
+    if (serverFD == -1)
+    {
         return;
     }
-    int prLen=strlen(projectName);
-    write(serverFD,("Destroy %s",projectName),(8+prLen));
+    int prLen = strlen(projectName);
+    write(serverFD, ("6%s", projectName), (1 + prLen));
     char passC[1];
-    read(serverFD,passC,1);
-    int pass=atoi(passC);
-    if(pass==0){
+    read(serverFD, passC, 1);
+    int pass = atoi(passC);
+    if (pass == 0)
+    {
         printf("Project does not exist in the server\n");
     }
-    else if(pass==1){
+    else if (pass == 1)
+    {
         printf("Project successfully defeated\n");
     }
     return;
 }
-
 /**
  * Gets the current version of the project and all files inside the project from the server.
  * 
  */
-void currentVersion(char* projectName){
-    int serverFD=checkConnection();
-    if(serverFD==-1){
-        return -1;
+void currentVersion(char *projectName)
+{
+    int serverFD = checkConnection();
+    if (serverFD == -1)
+    {
+        return;
     }
-    
 }
 
 /**
- * 
+ *  Takes in a project name and a file name and adds it to the manifest
  */
-void add(char* projectName, char* fileName){
 
+void add(char *projectName, char *fileName)
+{
+    /**
+     * Make sure the file and project exist. If not quit
+     * 
+     */
+    int socketFD = checkConnection();
+    if (socketFD == -1)
+    {
+        return;
+    }
+    int manifestFD = open(("%s/.manifest", projectName), O_RDWR, 00777);
+    int bytesRead = 0;
+    char fileNameRead[1];
+    char *totalBytesRead = malloc(1);
+    int readFile = 0;
+    char *filePath = calloc(strlen(projectName) + strlen(fileName) + 2, sizeof(char));
+    strcpy(filePath, projectName);
+    strcat(filePath, "/");
+    strcat(filePath, fileName);
+    while (bytesRead > -1)
+    {
+        read(manifestFD, fileNameRead, 1);
+        if (readFile && fileNameRead[0] == ' ')
+        {
+            if (strcmp(totalBytesRead, filePath) == 0)
+            {
+                printf("Warning, the file already exists in the manifest\n");
+                return;
+            }
+        }
+        else if (fileNameRead[0] == ' ')
+        {
+        }
+        else if (fileNameRead[0] == '\n')
+        {
+            readFile = 0;
+            totalBytesRead = realloc(totalBytesRead, 1);
+        }
+        if (readFile)
+        {
+            char *temp = malloc(strlen(totalBytesRead));
+            strcpy(temp, totalBytesRead);
+            totalBytesRead = realloc(totalBytesRead, strlen(temp) + 1);
+            strcpy(totalBytesRead, temp);
+            free(temp);
+        }
+    }
+    close(manifestFD);
+
+    manifestFD = open(("%s/.manifest", projectName), O_RDWR | O_APPEND, 00777);
+    char *fileP = malloc(strlen(fileName) + 2);
+    strcat(fileP, "/");
+    strcat(fileP, fileName);
+
+    struct stat manStats;
+    int fileFD = open(("/%s", projectName), O_RDONLY);
+    if (stat(("/%s", projectName), &manStats) < 0)
+    {
+        printf("ERROR reading manifest stats");
+        exit(1);
+    }
+    int size = manStats.st_size; //size of manifest file
+    char *fileContent = malloc(size);
+
+    read(fileFD, fileContent, size);
+    unsigned char hash[16];
+    MD5_CTX md5;
+    MD5Init(&md5);
+    MD5Update(&md5, fileContent, size);
+    MD5Final(hash, &md5);
+
+    write(manifestFD, fileP, strlen(fileP));
+    write(manifestFD, " $A ", 4);
+    write(manifestFD, hash, sizeof(hash));
+    write(manifestFD, "\n", 1);
+    free(fileP);
+    free(fileContent);
+    free(totalBytesRead);
 }
+
+
 /** Creates the .configure file given the ip/hostname and the port of the server.
  *  Prints a warning if the file exists and is overwritten (If we can do this)
  *  Does not connect to the server.
