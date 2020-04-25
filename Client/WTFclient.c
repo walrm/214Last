@@ -1,3 +1,4 @@
+#include <openssl/md5.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -9,7 +10,7 @@
 #include <netdb.h>
 #include <sys/stat.h>
 #include <math.h>
-#include <openssl/md5.h>
+
 /**
  * $C-File is changed
  * $D-File is deleted
@@ -79,10 +80,10 @@ int checkConnection()
         printf("Error connecting to host\n");
         return -1;
     }
-    write(sockfd,"Established Connection",22);
+    write(sockfd, "Established Connection", 22);
     char reading[23];
-    read(sockfd,reading,22);
-    printf("%s\n",reading);
+    read(sockfd, reading, 22);
+    printf("%s\n", reading);
     free(fileInfo);
     free(ip);
     free(host);
@@ -109,14 +110,6 @@ void create(char *projectName)
     strcat(combined, projectName);
     write(socketFD, combined, writeLen);
     char created[1];
-<<<<<<< Updated upstream
-=======
-    
-    char s[17];
-    read(socketFD, s, 16);
-    s[16] = '\0';
-    printf("%s\n", s);
->>>>>>> Stashed changes
 
     read(socketFD, created, 1);
     int c = atoi(created);
@@ -166,6 +159,7 @@ void create(char *projectName)
     free(combined);
     closeConnection(socketFD);
 }
+
 /**
  * Deletes a project repository on the server. Does not change it on the client's machine
  * If connection failed or if the project does not exist, print an error
@@ -223,13 +217,12 @@ void add(char *projectName, char *fileName)
      * Make sure the file and project exist. If not quit
      * 
      */
-    int socketFD = checkConnection();
-    if (socketFD == -1)
-    {
-        return;
-    }
-    int manifestFD = open(("%s/.manifest", projectName), O_RDWR, 00777);
-    int bytesRead = 0;
+    char *manifestPath = malloc(10 + strlen(projectName));
+    memset(manifestPath, 0, 10 + strlen(projectName));
+    strcat(manifestPath, projectName);
+    strcat(manifestPath, "/.manifest");
+    int manifestFD = open(manifestPath, O_RDWR, 00777);
+    int bytesRead = 1;
     char fileNameRead[1];
     char *totalBytesRead = malloc(1);
     int readFile = 0;
@@ -237,9 +230,9 @@ void add(char *projectName, char *fileName)
     strcpy(filePath, projectName);
     strcat(filePath, "/");
     strcat(filePath, fileName);
-    while (bytesRead > -1)
+    while (bytesRead > 0)
     {
-        read(manifestFD, fileNameRead, 1);
+        bytesRead = read(manifestFD, fileNameRead, 1);
         if (readFile && fileNameRead[0] == ' ')
         {
             if (strcmp(totalBytesRead, filePath) == 0)
@@ -266,38 +259,42 @@ void add(char *projectName, char *fileName)
         }
     }
     close(manifestFD);
+    manifestFD = open(manifestPath, O_RDWR | O_APPEND, 00777);
+    printf("%s\n", manifestPath);
+    char *fileP = malloc(strlen(fileName) + strlen(projectName) + 2);
+    memset(fileP, 0, strlen(fileName) + strlen(projectName) + 2);
+    strcat(fileP, projectName);
+    strcat(fileP, "/");
+    strcat(fileP, fileName);
+    int fileFD = open(filePath, O_RDONLY);
+    off_t currentPos = lseek(fileFD, (size_t)0, SEEK_CUR);
+    off_t size = lseek(fileFD, (size_t)0, SEEK_END);
+    lseek(fileFD, (size_t)0, SEEK_SET);
+    char *fileContent = malloc(size);
+    read(fileFD, fileContent, size);
 
-//     manifestFD = open(("%s/.manifest", projectName), O_RDWR | O_APPEND, 00777);
-//     char *fileP = malloc(strlen(fileName) + 2);
-//     strcat(fileP, "/");
-//     strcat(fileP, fileName);
 
-//     struct stat manStats;
-//     int fileFD = open(("/%s", projectName), O_RDONLY);
-//     if (stat(("/%s", projectName), &manStats) < 0)
-//     {
-//         printf("ERROR reading manifest stats");
-//         exit(1);
-//     }
-//     int size = manStats.st_size; //size of manifest file
-//     char *fileContent = malloc(size);
 
-//     read(fileFD, fileContent, size);
-//     unsigned char hash[16];
-//     MD5_CTX md5;
-//     MD5Init(&md5);
-//     MD5Update(&md5, fileContent, size);
-//     MD5Final(hash, &md5);
+    unsigned char* result=malloc(MD5_DIGEST_LENGTH);
+    char* s2="hello";
+    MD5(fileContent,fileFD,result);
+    int i;
+    for(i=0;i<MD5_DIGEST_LENGTH;i++){
+        printf("%02x", result[i]); 
+    }
+    printf("\n");
+    char str[50];
+    sprintf(str, "%x", *(uint32_t *)result);
+    printf("%s\n",str);
+    write(manifestFD, fileP, strlen(fileP));
+    write(manifestFD, " $A ", 4);
+    write(manifestFD,result,sizeof(result)*4);
 
-//     write(manifestFD, fileP, strlen(fileP));
-//     write(manifestFD, " $A ", 4);
-//     write(manifestFD, hash, sizeof(hash));
-//     write(manifestFD, "\n", 1);
-//     free(fileP);
-//     free(fileContent);
-//     free(totalBytesRead);
-// }
-
+    write(manifestFD, "\n", 1);
+    free(fileP);
+    free(fileContent);
+    free(totalBytesRead);
+}
 
 /** Creates the .configure file given the ip/hostname and the port of the server.
  *  Prints a warning if the file exists and is overwritten (If we can do this)
@@ -376,6 +373,7 @@ int main(int argc, char *argv[])
         }
         else if (strcmp("Add", argv[1]) == 0)
         {
+            add(argv[2], argv[3]);
         }
         else if (strcmp("Rollback", argv[1]) == 0)
         {
