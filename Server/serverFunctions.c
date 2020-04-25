@@ -30,7 +30,7 @@ void create(char* projectName, int socket){
     write(socket,"1",1); //Write to client that project has been created
     
     //Creates project with parameter projectName and create the project's manifest file
-    mkdir(projectName,0777); 
+    mkdir(projectName,00777); 
     char* manifestPath = malloc(strlen(projectName)+13);
     bzero(manifestPath,sizeof(manifestPath));
     manifestPath[0] = '.';
@@ -39,6 +39,7 @@ void create(char* projectName, int socket){
     char m[10] = "/.Manifest";
     strcat(manifestPath, m);
     manifestPath[strlen(manifestPath)] = '\0';
+    printf("MANIFEST PATH: %s\n", manifestPath);
     int manifestFD = open(manifestPath, O_CREAT | O_RDWR, 00777); 
     write(manifestFD,"0\n",1);  //Writing version number 0 on the first line
 

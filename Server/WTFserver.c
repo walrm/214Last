@@ -13,6 +13,7 @@
 
 #include "serverFunctions.h"
 
+int s1, s2;
 
 //Method to print error and return -1 as error
 void pError(char* err){
@@ -22,7 +23,9 @@ void pError(char* err){
 
 void stopServer(int sigNum){
     printf("Closing Server Connection...\n");
-    exit(1);
+    close(s1);
+    close(s2);
+    exit(0);
 }
 
 //Helper function for delete - recursively delete files and directories in project folder
@@ -57,7 +60,7 @@ void destroyProject(char* path){
             strcat(file,currentINode->d_name); //appends file name to path
             file[strlen(file)] = '\0';
             printf("FILE PATH: %s\n", file);
-            if(remove(file)<0)
+            if(unlink(file)<0)
                 pError("ERROR removing file");
             free(file);
         }
@@ -188,22 +191,15 @@ int main(int argc, char* argv[]){
     //Client trying to connect and forks for each new client connecting
     while(1){
         newsocketfd = accept(socketfd, (struct sockaddr *) &cli_addr, &clilen);
+        s1 = socketfd;
+        s2 = newsocketfd;
         if(newsocketfd<0){
             pError("ERROR on accept");
         }
-        
         if(pthread_create(&threadID,NULL,clientServerInteract,(void*)&newsocketfd) < 0){
             pError("ERROR on creating thread");
         }
     }
-
-    /*TODO: CATCH EXIT SIGNAL AND DO ALL THESE CLOSES 
-    if(pid == 0){
-        close(socketfd);
-        clientServerInteract(newsocketfd);
-        exit(0);
-    }else close(newsocketfd);
-    */
     return 0;
 }
 
