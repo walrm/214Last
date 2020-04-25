@@ -25,14 +25,6 @@ void stopServer(int sigNum){
     exit(1);
 }
 
-//Grabbing project name from the client side
-char* getProjectName(char* buffer){
-    char* projName = malloc(strlen(buffer)-1);
-    memcpy(projName, &buffer[1], strlen(buffer));
-    projName[strlen(projName)]='\0'; 
-    return projName;
-}
-
 //Helper function for delete - recursively delete files and directories in project folder
 void destroyProject(char* path){
     DIR *cwd = opendir(path);
@@ -59,7 +51,7 @@ void destroyProject(char* path){
 
         //INode is a file
         }else if(currentINode!=NULL){
-            char* file = malloc(strlen(path)+strlen(currentINode->d_name)+2);
+            char* file = malloc(strlen(path)+strlen(currentINode->d_name)+3);
             strcpy(file, path);
             strcat(file,"/");
             strcat(file,currentINode->d_name); //appends file name to path
@@ -67,11 +59,9 @@ void destroyProject(char* path){
             printf("FILE PATH: %s\n", file);
             if(remove(file)<0)
                 pError("ERROR removing file");
-
             free(file);
         }
     }while(currentINode!=NULL); 
-
     closedir(cwd); 
 }
 
@@ -107,7 +97,6 @@ void delete(char* projectName, int socket){
     closedir(cwd);
 }
 
-
 //Handles communication between the server and client socket
 void* clientServerInteract(void* socket_arg){
     int socket = *(int *) socket_arg;
@@ -138,12 +127,16 @@ void* clientServerInteract(void* socket_arg){
     printf("command: %d\n",command);
     pthread_mutex_lock(&lock);
     if(command == 5){ //Create Command
-        char* projectName = getProjectName(buffer);
+        char* projectName = malloc(strlen(buffer)-1);
+        memcpy(projectName, &buffer[1], strlen(buffer));
+        projectName[strlen(projectName)]='\0'; 
         printf("Project Name: %s\n", projectName);
         create(projectName, socket);
         free(projectName);
     }else if(command == 6){ //Delete Command
-        char* projectName = getProjectName(buffer);
+        char* projectName = malloc(strlen(buffer)-1);
+        memcpy(projectName, &buffer[1], strlen(buffer));
+        projectName[strlen(projectName)]='\0'; 
         printf("Project Name: %s\n", projectName);
         delete(projectName, socket);
         free(projectName);
@@ -152,6 +145,9 @@ void* clientServerInteract(void* socket_arg){
 }
 
 int main(int argc, char* argv[]){
+    if(argc < 2)
+        pError("Invalid number of arguments");
+        
     int socketfd, port, pid, clilen, newsocketfd;
     char buffer[256];
     struct sockaddr_in serv_addr; //address info for server client

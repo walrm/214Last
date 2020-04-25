@@ -32,6 +32,7 @@ void create(char* projectName, int socket){
     //Creates project with parameter projectName and create the project's manifest file
     mkdir(projectName,0777); 
     char* manifestPath = malloc(strlen(projectName)+13);
+    bzero(manifestPath,sizeof(manifestPath));
     manifestPath[0] = '.';
     manifestPath[1] = '/';
     strcat(manifestPath,projectName);
@@ -110,7 +111,6 @@ void create(char* projectName, int socket){
 //             free(file);
 //         }
 //     }while(currentINode!=NULL); 
-
 //     closedir(cwd); 
 // }
 
