@@ -10,7 +10,8 @@
 #include <netdb.h>
 #include <sys/stat.h>
 #include <math.h>
-
+#include <dirent.h>
+#include <errno.h>
 /**
  * $C-File is changed
  * $D-File is deleted
@@ -213,85 +214,101 @@ void currentVersion(char *projectName)
 
 void add(char *projectName, char *fileName)
 {
-    /*
-     * Make sure the file and project exist. If not quit
-     * 
-     */
+    DIR *dir = opendir(projectName);
+    if (dir)
+    {
+        /* Directory exists. */
+        closedir(dir);
+    }
+    else if (ENOENT == errno)
+    {
+        printf("Directory does not exist\n");
+    }
+    else
+    {
+        /* opendir() failed for some other reason. */
+    }
     char *manifestPath = malloc(10 + strlen(projectName));
     memset(manifestPath, 0, 10 + strlen(projectName));
     strcat(manifestPath, projectName);
     strcat(manifestPath, "/.manifest");
     int manifestFD = open(manifestPath, O_RDWR, 00777);
     int bytesRead = 1;
-    char fileNameRead[1];
+    char *fileNameRead = malloc(2);
+    memset(fileNameRead, 0, 2);
+    fileNameRead[1] = '\0';
     char *totalBytesRead = malloc(1);
     int readFile = 0;
     char *filePath = calloc(strlen(projectName) + strlen(fileName) + 2, sizeof(char));
     strcpy(filePath, projectName);
     strcat(filePath, "/");
     strcat(filePath, fileName);
+    if (access(filePath, F_OK) == -1)
+    {
+        printf("Error:File does not exist in the project\n");
+        return;
+    }
+
     while (bytesRead > 0)
     {
         bytesRead = read(manifestFD, fileNameRead, 1);
         if (readFile && fileNameRead[0] == ' ')
         {
+            printf("%s\n", totalBytesRead);
             if (strcmp(totalBytesRead, filePath) == 0)
             {
                 printf("Warning, the file already exists in the manifest\n");
                 return;
             }
+            readFile = 0;
         }
         else if (fileNameRead[0] == ' ')
         {
         }
         else if (fileNameRead[0] == '\n')
         {
-            readFile = 0;
+            readFile = 1;
             totalBytesRead = realloc(totalBytesRead, 1);
+            memset(totalBytesRead, 0, 1);
         }
-        if (readFile)
+        else if (readFile)
         {
-            char *temp = malloc(strlen(totalBytesRead));
+            char *temp = malloc(strlen(totalBytesRead) + 1);
             strcpy(temp, totalBytesRead);
+            strcat(temp, fileNameRead);
             totalBytesRead = realloc(totalBytesRead, strlen(temp) + 1);
+            memset(totalBytesRead, 0, strlen(temp) + 1);
             strcpy(totalBytesRead, temp);
             free(temp);
         }
     }
     close(manifestFD);
     manifestFD = open(manifestPath, O_RDWR | O_APPEND, 00777);
-    printf("%s\n", manifestPath);
-    char *fileP = malloc(strlen(fileName) + strlen(projectName) + 2);
-    memset(fileP, 0, strlen(fileName) + strlen(projectName) + 2);
-    strcat(fileP, projectName);
-    strcat(fileP, "/");
-    strcat(fileP, fileName);
+    printf("%s\n", filePath);
     int fileFD = open(filePath, O_RDONLY);
     off_t currentPos = lseek(fileFD, (size_t)0, SEEK_CUR);
     off_t size = lseek(fileFD, (size_t)0, SEEK_END);
     lseek(fileFD, (size_t)0, SEEK_SET);
-    char *fileContent = malloc(size);
+    char *fileContent = malloc(size + 1);
     read(fileFD, fileContent, size);
-
-
-
-    unsigned char* result=malloc(MD5_DIGEST_LENGTH);
-    char* s2="hello";
-    MD5(fileContent,fileFD,result);
+    fileContent[size] = '\0';
+    unsigned char *result = malloc(MD5_DIGEST_LENGTH);
+    char *s2 = "hello";
+    MD5(fileContent, fileFD, result);
     int i;
-    for(i=0;i<MD5_DIGEST_LENGTH;i++){
-        printf("%02x", result[i]); 
+    for (i = 0; i < MD5_DIGEST_LENGTH; i++)
+    {
+        printf("%x", result[i]);
     }
     printf("\n");
     char str[50];
-    sprintf(str, "%x", *(uint32_t *)result);
-    printf("%s\n",str);
-    write(manifestFD, fileP, strlen(fileP));
+    sprintf(str, "%02x", *(uint32_t *)result);
+    printf("%s\n", str);
+    write(manifestFD, filePath, strlen(filePath));
     write(manifestFD, " $A ", 4);
-    write(manifestFD,result,sizeof(result)*4);
-
+    write(manifestFD, str, strlen(str));
     write(manifestFD, "\n", 1);
-    free(fileP);
+    free(filePath);
     free(fileContent);
     free(totalBytesRead);
 }
