@@ -53,12 +53,13 @@ void sendFileInformation(char* path, int socket){
             
             printf("DIRECTORY PATH: %s\n", nextPath);
 
-            char dBuffer[256];
-            sprintf(dBuffer, "%d", strlen(nextPath));
+            // char dBuffer[256];
+            // sprintf(dBuffer, "%d", strlen(nextPath));
 
-            write(socket,dBuffer,strlen(nextPath));
-            write(socket," ",1);
+            // write(socket,dBuffer,strlen(dBuffer));
+            // write(socket," ",1);
             write(socket,nextPath,strlen(currentINode->d_name));
+            write(socket," ",1);
 
             sendFileInformation(nextPath, socket);
         }else{
@@ -89,6 +90,9 @@ void sendFileInformation(char* path, int socket){
             write(socket," ",1);
             printf("buffer: %s\n",buffer); 
             printf("buffer size: %d\n", strlen(buffer));
+
+            write(socket,filePath,strlen(filePath));
+            write(socket, " ", 1);
 
             //Send manifest bytes to client
             while(size > bytesRead){
