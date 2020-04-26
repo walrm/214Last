@@ -137,7 +137,7 @@ void* clientServerInteract(void* socket_arg){
         printf("Project Name: %s\n", projectName);
         delete(projectName, socket);
         free(projectName);
-    }else if(command == 7){
+    }else if(command == 7){ //currentversion command
         char* projectName = malloc(strlen(buffer)-1);
         memcpy(projectName, &buffer[1], strlen(buffer));
         projectName[strlen(projectName)]='\0'; 
