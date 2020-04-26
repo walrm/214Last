@@ -29,23 +29,95 @@ void stopServer(int sigNum){
     exit(0);
 }
 
-//TODO: returns manifest information on 
-void currentVersion(char* projectName, int socket){
-    DIR *cwd = opendir("./");
-    struct dirent *currentINode = NULL;
+//Recurisve helper method to send
+void sendFileInformation(char* path, int socket){
+    DIR* cwd = opendir(path);
     if(cwd == NULL){
         possibleError(socket,"ERROR on opening directory");
         return;
     }
 
+    struct dirent *currentINode = NULL;
+    do{
+        currentINode = readdir(cwd);
+        if(currentINode==NULL) return;
+        
+        //INode is directory, send directory informaiton
+        if(currentINode->d_type == DT_DIR){
+            if (strcmp(currentINode->d_name, ".") == 0 || strcmp(currentINode->d_name, "..") == 0)
+                    continue;
+            char nextPath[PATH_MAX];
+            strcpy(nextPath, path);
+            strcat(strcat(nextPath, "/"), currentINode->d_name);
+            write(socket,"3",1); //server letting client know it is sending a directory name
+            
+            char dLength[256];
+            sprintf(dLength, "%d", strlen(currentINode->d_name));
+
+            write(socket,dLength,strlen(currentINode->d_name));
+            write(socket," ",1);
+            write(socket,currentINode->d_name,strlen(currentINode->d_name));
+
+            sendFileInformation(nextPath, socket);
+        }else{
+            write(socket, "4", 1); //server letting client know it is sending file
+
+            char* filePath = malloc(strlen(path)+strlen(currentINode->d_name)+2);
+            bzero(filePath,sizeof(filePath));
+            strcat(filePath,path);
+            strcat(filePath,"/");
+            strcat(filePath,currentINode->d_name);
+            filePath[strlen(filePath)] = '\0';
+            printf("FILE PATH: %s\n", filePath);
+            int fd = open(filePath, O_RDONLY); 
+            
+            struct stat fileStats;
+            if(stat(filePath,&fileStats)<0){
+                possibleError(socket,"ERROR reading file stats");
+                return;
+            }
+
+            int size = fileStats.st_size; 
+            int bytesRead = 0, bytesToRead = 0;
+            char buffer[256];
+            
+            //Send size of manifest file to client
+            sprintf(buffer,"%d", size);
+            write(socket,buffer,strlen(buffer));
+            write(socket," ",1);
+            printf("buffer: %s\n",buffer); 
+            printf("buffer size: %d\n", strlen(buffer));
+
+            //Send manifest bytes to client
+            while(size > bytesRead){
+                bytesToRead = (size-bytesRead<256)? size-bytesRead : 255;
+                bzero(buffer,256);
+                bytesRead += read(fd,buffer,bytesToRead);
+                printf("BUFFER:\n%s\n", buffer);
+                write(socket,buffer,bytesToRead);
+            }
+        }
+    }while(currentINode!=NULL);
+}
+
+//Send project and all its files to the client
+void checkout(char* projectName, int socket){
+    //opens (repository) directory from root path and looks if project already exists
+    DIR *cwd = opendir("./");
+    if(cwd == NULL){
+        possibleError(socket,"ERROR on opening directory");
+        return;
+    }
+
+    struct dirent *currentINode = NULL;
     do{
         currentINode = readdir(cwd);
         if(currentINode!=NULL && currentINode->d_type == DT_DIR){
             if (strcmp(currentINode->d_name, ".") == 0 || strcmp(currentINode->d_name, "..") == 0)
                     continue;
 
-            //Project found, writing manifest data to socket
             if(strcmp(currentINode->d_name,projectName)==0){
+<<<<<<< Updated upstream
                 write(socket,"1",1);
                 char* manifestPath = malloc(strlen(projectName)+13);
                 bzero(manifestPath,sizeof(manifestPath));
@@ -82,17 +154,30 @@ void currentVersion(char* projectName, int socket){
                     bytesRead += read(manifestFD,manBuffer,bytesToRead);
                     write(socket,manBuffer,bytesToRead);
                 }
+=======
+                write(socket,"1",1); //send to client that project was found
+>>>>>>> Stashed changes
                 
-                free(manifestPath);
+                //Find manifest path and open to read data
+                char* projectPath = malloc(strlen(projectName)+3);
+                bzero(projectPath,sizeof(projectPath));
+                projectPath[0] = '.';
+                projectPath[1] = '/';
+                strcat(projectPath,projectName);
+                projectPath[strlen(projectPath)] = '\0';
+                printf("PROJECT PATH: %s\n", projectPath);
+
+                sendFileInformation(projectPath,socket);
+
+                free(projectPath);
                 closedir(cwd);
                 close(socket);
-                close(manifestFD);
-                break;
+                return;
             }
 
         }
     }while(currentINode!=NULL); 
-    write(socket,"0",1);  //project doesn't exist, report to client
+    write(socket,"0",1); //write to client project doesn't exist
 }
 
 //Handles communication between the server and client socket
@@ -116,6 +201,7 @@ void* clientServerInteract(void* socket_arg){
 
     bzero(buffer,256);
     status = read(socket, buffer, 255);
+
     //very inefficent way of locking and unlocking- should do for each project instead of whole repository
     pthread_mutex_t lock;
     pthread_mutex_init(&lock, NULL);
@@ -123,28 +209,26 @@ void* clientServerInteract(void* socket_arg){
     int command = (int)buffer[0] - 48;
     printf("command: %d\n",command);
     pthread_mutex_lock(&lock);
-    if(command == 5){ //Create Command
-        char* projectName = malloc(strlen(buffer)-1);
+
+    //Grabs project name if it is not a rollback command
+    char* projectName;
+    if(command != 9){
+        projectName = malloc(strlen(buffer)-1);
         memcpy(projectName, &buffer[1], strlen(buffer));
         projectName[strlen(projectName)]='\0'; 
         printf("Project Name: %s\n", projectName);
-        create(projectName, socket);
-        free(projectName);
-    }else if(command == 6){ //Delete Command
-        char* projectName = malloc(strlen(buffer)-1);
-        memcpy(projectName, &buffer[1], strlen(buffer));
-        projectName[strlen(projectName)]='\0'; 
-        printf("Project Name: %s\n", projectName);
-        delete(projectName, socket);
-        free(projectName);
-    }else if(command == 7){ //currentversion command
-        char* projectName = malloc(strlen(buffer)-1);
-        memcpy(projectName, &buffer[1], strlen(buffer));
-        projectName[strlen(projectName)]='\0'; 
-        printf("Project Name: %s\n", projectName);
-        currentVersion(projectName,socket);
-        free(projectName);
     }
+
+    if(command == 0){ //Checkout 
+        checkout(projectName, socket);
+    }else if(command == 5){ //Create 
+        create(projectName, socket);
+    }else if(command == 6){ //Delete 
+        delete(projectName, socket);
+    }else if(command == 7){ //CurrentVersion
+        currentVersion(projectName,socket);
+    }
+    free(projectName);
     pthread_mutex_unlock(&lock);
 }
 
