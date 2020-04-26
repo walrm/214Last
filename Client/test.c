@@ -11,6 +11,5 @@
 
 int main(int argc, char *argv[])
 {
-    int x=system("mkdir \"test2\"");
-    printf("%d\n",x);
+    mkdir("kttest1/test5090",00777);
 }

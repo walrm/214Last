@@ -89,6 +89,8 @@ void sendFileInformation(char* path, int socket){
             write(socket," ",1);
             printf("buffer: %s\n",buffer); 
             printf("buffer size: %d\n", strlen(buffer));
+            write(socket,filePath,strlen(filePath));
+            write(socket, " ", 1);
 
             //Send manifest bytes to client
             while(size > bytesRead){

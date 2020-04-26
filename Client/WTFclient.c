@@ -136,6 +136,7 @@ void create(char *projectName)
         int sys = mkdir(projectName, 00777);
         printf("Project created on the server\n");
     }
+    //Getting the size of the manifest file
     char *gettingTotalBytes = malloc(2);
     bzero(gettingTotalBytes,2);
     char *i = malloc(5);
@@ -151,6 +152,7 @@ void create(char *projectName)
         }
     } while (gettingTotalBytes[0] != ' ');
     int totalBytes = atoi(i);
+    //Creating the manifest file
     char *string = malloc(11 + strlen(projectName));
     bzero(string, 11 + strlen(projectName));
     strcat(string, projectName);
@@ -499,7 +501,139 @@ int closeConnection(int serverFD)
     close(serverFD);
     printf("Connection closed \n");
 }
+/**
+ * Helper method to get the total bytes to read for a file.
+ * @Param socketFD the fileDescriptor for the socket
+ * Returns the number of bytes read for the file size
+ */
+int getTotalBytes(int socketFD){
+    char *gettingTotalBytes = calloc(2,1);
+    char *i = calloc(15,1);
+    do
+    {
+        read(socketFD, gettingTotalBytes, 1);
+        if (gettingTotalBytes[0] != ' ')
+        {
+            strcat(i, gettingTotalBytes);
+        }
+    } while (gettingTotalBytes[0] != ' ');
+    int totalBytes = atoi(i);
+    free(gettingTotalBytes);
+    free(i);
+    return totalBytes;
+}
+/**
+ * Returns the name of the file or directory in a memory allocated char*. 
+ * Remember to free the char* in the mehod that this helper method is called
+ * The socket starts at the first character of the name of the file.
+ */
+char* getNameOfFile(int socketFD){
+    char* gettingTotalBytes=calloc(2,1);
+    char* name=calloc(1,1);
+    do{
+        read(socketFD,gettingTotalBytes,1);
+        if(gettingTotalBytes[0]!=' '){
+            char* temp=calloc(strlen(name)+1,1);
+            strcpy(temp,name);
+            strcpy(temp,gettingTotalBytes);
+            free(name);
+        }
 
+
+
+
+    }while(gettingTotalBytes[0]!=' ');
+}
+/**
+ * Gets a project from the server, with all the files, and creates the project repository on the client's pc
+ */
+void checkout(char* projectName){
+    //Makes sure the directory does not exist on the client
+    DIR *dir = opendir(projectName);
+    if (dir)
+    {
+        printf("Directory already exists on the client\n");
+        closedir(dir);
+        return;
+    }
+    else{
+        closedir(dir);
+    }
+    //Connects with the server and sends the command and project name
+    int socketFD=checkConnection();
+    if(socketFD==-1){
+        return;
+    }
+    //Sending the command to the server
+    char* command=malloc(strlen(projectName)+2);
+    strcat(command,"0");
+    strcat(command,projectName);
+    command[strlen(command)-1]='\0';
+    write(socketFD,command,strlen(command));
+    //Reading the servers response(error or not)
+    char* reads=calloc(2,1);
+    reads[1]='\0';
+    read(socketFD,reads,1);
+    int code=atoi(reads);
+    switch(code){
+        case 0:
+            printf("Project does not exist on server\n");
+            return;
+            break;
+        case 2:
+            printf("Error searching for file\n");
+            return;
+            break;
+    }
+    free(command);
+    //Creates the directory for the client
+    mkdir(projectName,00777);
+    //Reading the manifest file
+    char* manifestPath=calloc(strlen(projectName)+1+strlen("/.manifest"),1);
+    int manifestFD=open(manifestPath,O_CREAT|O_RDWR,00777);
+    int totalBytesRead=0;
+
+    while (totalBytes > totalBytesRead)
+    {
+        int bytesToRead = min((totalBytes - totalBytesRead), 1000);
+        char *manifest=calloc(bytesToRead,1);
+        int bytesRead = read(socketFD, manifest, bytesToRead);
+        write(manifestFD, manifest, bytesRead);
+        free(manifest);
+        totalBytesRead += bytesRead;
+    }
+    free(manifestPath);
+    close(manifestFD);
+    //directory:3 length of directory space name
+    //file:4 size of file space file
+    //5: exits the directory
+    int code=0;
+    char* codeS=calloc(2,1);
+    read(socketFD,codeS,1);
+    code=atoi(codeS);
+    while(code!=5){
+        if(code==3){
+            int totalFileBytes=getTotalBytes(socketFD);
+            char* nameOfFile=getNameofFile(socketFD);
+        }
+        else if(code==4){
+            do{
+
+
+            }while()
+        }
+        read(socketFD,codeS,1);
+        code=atoi(codeS);
+    }
+
+
+
+
+
+
+
+
+}
 int main(int argc, char *argv[])
 {
     if (argc == 1 || argc == 2)
