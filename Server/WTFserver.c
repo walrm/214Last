@@ -93,8 +93,8 @@ void sendFileInformation(char* path, int socket){
             write(socket,filePath,strlen(filePath));
             write(socket, " ", 1);
 
-            write(socket,filePath,strlen(filePath));
-            write(socket, " ", 1);
+            //write(socket,filePath,strlen(filePath));
+            //write(socket, " ", 1);
 
             //Send manifest bytes to client
             while(size > bytesRead){
@@ -106,6 +106,7 @@ void sendFileInformation(char* path, int socket){
             }
         }
     }while(currentINode!=NULL);
+    printf("End of directory\n");
     write(socket,"5",1); //Let's client know there are no more files to read
 }
 

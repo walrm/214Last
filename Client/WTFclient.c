@@ -25,7 +25,7 @@ int min(int a, int b)
     {
         return b;
     }
-    return b;
+    return a;
 }
 /**
  * Looks for the .configure file. If it does not exist, prints an error.
@@ -46,7 +46,7 @@ int checkConnection()
     off_t currentPos = lseek(configFD, (size_t)0, SEEK_CUR);
     off_t size = lseek(configFD, (size_t)0, SEEK_END);
     lseek(configFD, (size_t)0, SEEK_SET);
-    char *fileInfo = (char *)malloc(size+1);
+    char *fileInfo = (char *)malloc(size + 1);
     read(configFD, fileInfo, size);
     char *space = strchr(fileInfo, ' ');
     int spacel = space - fileInfo;
@@ -60,7 +60,7 @@ int checkConnection()
     int sockfd = socket(AF_INET, SOCK_STREAM, 0);
     int portNum = atoi(host);
     struct hostent *server = NULL;
-    server=gethostbyname(ip);
+    server = gethostbyname(ip);
     if (sockfd < 0)
     {
         printf("Error opening socket\n");
@@ -138,7 +138,7 @@ void create(char *projectName)
     }
     //Getting the size of the manifest file
     char *gettingTotalBytes = malloc(2);
-    bzero(gettingTotalBytes,2);
+    bzero(gettingTotalBytes, 2);
     char *i = malloc(5);
     bzero(i, 5);
     int z = 0;
@@ -431,11 +431,11 @@ void add(char *projectName, char *fileName)
         }
         else if (readFile)
         {
-            char *temp = malloc(strlen(totalBytesRead) +strlen(fileNameRead)+1);
+            char *temp = malloc(strlen(totalBytesRead) + strlen(fileNameRead) + 1);
             strcpy(temp, totalBytesRead);
             strcat(temp, fileNameRead);
-            totalBytesRead = realloc(totalBytesRead, strlen(temp)+1);
-            memset(totalBytesRead, 0, strlen(temp)+1);
+            totalBytesRead = realloc(totalBytesRead, strlen(temp) + 1);
+            memset(totalBytesRead, 0, strlen(temp) + 1);
             strcpy(totalBytesRead, temp);
             free(temp);
         }
@@ -506,9 +506,10 @@ int closeConnection(int serverFD)
  * @Param socketFD the fileDescriptor for the socket
  * Returns the number of bytes read for the file size
  */
-int getTotalBytes(int socketFD){
-    char *gettingTotalBytes = calloc(2,1);
-    char *i = calloc(15,1);
+int getTotalBytes(int socketFD)
+{
+    char *gettingTotalBytes = calloc(2, 1);
+    char *i = calloc(15, 1);
     do
     {
         read(socketFD, gettingTotalBytes, 1);
@@ -527,27 +528,54 @@ int getTotalBytes(int socketFD){
  * Remember to free the char* in the mehod that this helper method is called
  * The socket starts at the first character of the name of the file.
  */
-char* getNameOfFile(int socketFD){
-    char* gettingTotalBytes=calloc(2,1);
-    char* name=calloc(1,1);
-    do{
-        read(socketFD,gettingTotalBytes,1);
-        if(gettingTotalBytes[0]!=' '){
-            char* temp=calloc(strlen(name)+1,1);
-            strcpy(temp,name);
-            strcpy(temp,gettingTotalBytes);
+char *getFileName(int socketFD)
+{
+    char *gettingTotalBytes = calloc(2, 1);
+    char *name = calloc(1, 1);
+    do
+    {
+        read(socketFD, gettingTotalBytes, 1);
+        if (gettingTotalBytes[0] != ' ')
+        {
+            char *temp = calloc(strlen(name) + 1, 1);
+            strcpy(temp, name);
+            strcat(temp, gettingTotalBytes);
             free(name);
+            name = calloc(strlen(temp) + 1, 1);
+            strcpy(name, temp);
+            free(temp);
         }
+    } while (gettingTotalBytes[0] != ' ');
+    free(gettingTotalBytes);
+    return name;
+}
+/**
+ * Helper method to make the file in the client while getting the data from the server
+ * @Param socketFD: Socket file descriptor, Filename: Filename to create, totalByts: Total bytes to read
+ * DOES NOT free the filename inside this method
+ */
+void makeFile(int socketFD, char *fileName, int totalBytes)
+{
+    int fileFD = open(fileName, O_CREAT | O_RDWR, 00777);
+    int totalBytesRead = 0;
+    while (totalBytes > totalBytesRead)
+    {
+        int bytesToRead = min((totalBytes - totalBytesRead), 1000);
+        char *sRead = calloc(bytesToRead, 1);
+        printf("%s\n", sRead);
+        int bytesRead = read(socketFD, sRead, bytesToRead);
 
-
-
-
-    }while(gettingTotalBytes[0]!=' ');
+        write(fileFD, sRead, bytesRead);
+        free(sRead);
+        totalBytesRead += bytesRead;
+    }
+    close(fileFD);
 }
 /**
  * Gets a project from the server, with all the files, and creates the project repository on the client's pc
  */
-void checkout(char* projectName){
+void checkout(char *projectName)
+{
     //Makes sure the directory does not exist on the client
     DIR *dir = opendir(projectName);
     if (dir)
@@ -556,84 +584,83 @@ void checkout(char* projectName){
         closedir(dir);
         return;
     }
-    else{
+    else
+    {
         closedir(dir);
     }
     //Connects with the server and sends the command and project name
-    int socketFD=checkConnection();
-    if(socketFD==-1){
+    int socketFD = checkConnection();
+    if (socketFD == -1)
+    {
         return;
     }
     //Sending the command to the server
-    char* command=malloc(strlen(projectName)+2);
-    strcat(command,"0");
-    strcat(command,projectName);
-    command[strlen(command)-1]='\0';
-    write(socketFD,command,strlen(command));
+    char *command = calloc(strlen(projectName) + 2, 1);
+    strcat(command, "0");
+    strcat(command, projectName);
+    command[strlen(command)] = '\0';
+    write(socketFD, command, strlen(command));
     //Reading the servers response(error or not)
-    char* reads=calloc(2,1);
-    reads[1]='\0';
-    read(socketFD,reads,1);
-    int code=atoi(reads);
-    switch(code){
-        case 0:
-            printf("Project does not exist on server\n");
-            return;
-            break;
-        case 2:
-            printf("Error searching for file\n");
-            return;
-            break;
+    char *reads = calloc(2, 1);
+    reads[1] = '\0';
+    read(socketFD, reads, 1);
+    int cont = atoi(reads);
+    switch (cont)
+    {
+    case 0:
+        printf("Project does not exist on server\n");
+        return;
+        break;
+    case 2:
+        printf("Error searching for file\n");
+        return;
+        break;
     }
     free(command);
     //Creates the directory for the client
-    mkdir(projectName,00777);
-    //Reading the manifest file
-    char* manifestPath=calloc(strlen(projectName)+1+strlen("/.manifest"),1);
-    int manifestFD=open(manifestPath,O_CREAT|O_RDWR,00777);
-    int totalBytesRead=0;
-
-    while (totalBytes > totalBytesRead)
-    {
-        int bytesToRead = min((totalBytes - totalBytesRead), 1000);
-        char *manifest=calloc(bytesToRead,1);
-        int bytesRead = read(socketFD, manifest, bytesToRead);
-        write(manifestFD, manifest, bytesRead);
-        free(manifest);
-        totalBytesRead += bytesRead;
-    }
-    free(manifestPath);
-    close(manifestFD);
+    mkdir(projectName, 00777);
     //directory:3 length of directory space name
     //file:4 size of file space file
     //5: exits the directory
-    int code=0;
-    char* codeS=calloc(2,1);
-    read(socketFD,codeS,1);
-    code=atoi(codeS);
-    while(code!=5){
-        if(code==3){
-            int totalFileBytes=getTotalBytes(socketFD);
-            char* nameOfFile=getNameofFile(socketFD);
-        }
-        else if(code==4){
-            do{
+    int code = 0;
+    char *codeS = calloc(2, 1);
+    codeS[1] = '\0';
+    read(socketFD, codeS, 1);
+    code = atoi(codeS);
+    printf("Code at Begginning:%s\n", codeS);
+    while (code != 5)
+    {
+        //printf("Code:%d\n",code);
+        
+        if (code == 4)
+        {
 
-
-            }while()
+            int totalFileBytes = getTotalBytes(socketFD);
+            char *nameOfFile = getFileName(socketFD);
+            printf("Name of File:%s\n", nameOfFile);
+            makeFile(socketFD, nameOfFile, totalFileBytes);
         }
-        read(socketFD,codeS,1);
-        code=atoi(codeS);
+        else if (code == 3)
+        {
+            char *nameOfDirectory = getFileName(socketFD);
+            printf("Name of Directory:%s\n", nameOfDirectory);
+            mkdir(nameOfDirectory, 00777);
+            free(nameOfDirectory);
+        }
+        
+
+        read(socketFD, codeS, 1);
+        //printf("CodeS in loop:%s\n", codeS);
+        code = atoi(codeS);
+        //printf("Code in Loop:%s\n",code);
     }
-
-
-
-
-
-
-
-
+    closeConnection(socketFD);
+    free(codeS);
 }
+
+
+
+
 int main(int argc, char *argv[])
 {
     if (argc == 1 || argc == 2)
@@ -645,6 +672,7 @@ int main(int argc, char *argv[])
     {
         if (strcmp("Checkout", argv[1]) == 0)
         {
+            checkout(argv[2]);
         }
         else if (strcmp("Update", argv[1]) == 0)
         {
