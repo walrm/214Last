@@ -634,7 +634,6 @@ void checkout(char *projectName)
         
         if (code == 4)
         {
-
             int totalFileBytes = getTotalBytes(socketFD);
             char *nameOfFile = getFileName(socketFD);
             printf("Name of File:%s\n", nameOfFile);
@@ -650,7 +649,7 @@ void checkout(char *projectName)
         
 
         read(socketFD, codeS, 1);
-        //printf("CodeS in loop:%s\n", codeS);
+        printf("CodeS in loop:%s\n", codeS);
         code = atoi(codeS);
         //printf("Code in Loop:%s\n",code);
     }
