@@ -46,7 +46,7 @@ int checkConnection()
     off_t currentPos = lseek(configFD, (size_t)0, SEEK_CUR);
     off_t size = lseek(configFD, (size_t)0, SEEK_END);
     lseek(configFD, (size_t)0, SEEK_SET);
-    char *fileInfo = (char *)malloc(sizeof(char) * size);
+    char *fileInfo = (char *)malloc(size+1);
     read(configFD, fileInfo, size);
     char *space = strchr(fileInfo, ' ');
     int spacel = space - fileInfo;
@@ -59,16 +59,23 @@ int checkConnection()
     struct sockaddr_in serv_addr;
     int sockfd = socket(AF_INET, SOCK_STREAM, 0);
     int portNum = atoi(host);
-    struct hostent *server = gethostbyname(ip);
+    struct hostent *server = NULL;
+    server=gethostbyname(ip);
     if (sockfd < 0)
     {
         printf("Error opening socket\n");
+        free(ip);
+        free(host);
+        free(fileInfo);
         return -1;
     }
 
     if (server == NULL)
     {
         printf("Error: No such host\n");
+        free(ip);
+        free(host);
+        free(fileInfo);
         return -1;
     }
     bzero((char *)&serv_addr, sizeof(serv_addr));
@@ -78,6 +85,9 @@ int checkConnection()
     serv_addr.sin_port = htons(portNum);
     if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
     {
+        free(ip);
+        free(host);
+        free(fileInfo);
         printf("Error connecting to host\n");
         return -1;
     }
@@ -116,6 +126,8 @@ void create(char *projectName)
     int c = atoi(created);
     if (!c)
     {
+        closeConnection(socketFD);
+        free(combined);
         printf("Project already exists in the server\n");
         return;
     }
@@ -124,7 +136,8 @@ void create(char *projectName)
         int sys = mkdir(projectName, 00777);
         printf("Project created on the server\n");
     }
-    char *gettingTotalBytes = malloc(1);
+    char *gettingTotalBytes = malloc(2);
+    bzero(gettingTotalBytes,2);
     char *i = malloc(5);
     bzero(i, 5);
     int z = 0;
@@ -238,7 +251,7 @@ void currentVersion(char *projectName)
     int isFirstLine = 1;
     char *byteRead = malloc(1);
     char *projectVersion = malloc(10);
-    bzero(byteRead,1);
+    bzero(byteRead, 1);
     bzero(projectVersion, 10);
     //Getting the project version
     while (isFirstLine)
@@ -258,14 +271,12 @@ void currentVersion(char *projectName)
         }
     }
 
-
-
     //Getting the version of each file
     int readingFile = 1;
     int readingVersion = 0;
     char *fileName = malloc(1);
     char *versionName = malloc(1);
-    bzero(fileName,1);
+    bzero(fileName, 1);
     bzero(versionName, 1);
     char *fileByteRead = malloc(1);
     while (bytesRead < totalBytes)
@@ -339,7 +350,6 @@ void currentVersion(char *projectName)
     free(gettingTotalBytes);
     close(socketFD);
 
-
     return;
 }
 
@@ -358,15 +368,16 @@ void add(char *projectName, char *fileName)
     else if (ENOENT == errno)
     {
         printf("Directory does not exist\n");
+        return;
     }
     else
     {
-        /* opendir() failed for some other reason. */
+        printf("Error accessing directory\n");
     }
-    char *manifestPath = malloc(10 + strlen(projectName));
-    memset(manifestPath, 0, 10 + strlen(projectName));
+    char *manifestPath = malloc(11 + strlen(projectName));
+    memset(manifestPath, 0, 11 + strlen(projectName));
     strcat(manifestPath, projectName);
-    strcat(manifestPath, "/.manifest");
+    strcat(manifestPath, "/.manifest\0");
     int manifestFD = open(manifestPath, O_RDWR, 00777);
     int bytesRead = 1;
     char *fileNameRead = malloc(2);
@@ -381,6 +392,11 @@ void add(char *projectName, char *fileName)
     if (access(filePath, F_OK) == -1)
     {
         printf("Error:File does not exist in the project\n");
+        close(manifestFD);
+        free(totalBytesRead);
+        free(filePath);
+        free(fileNameRead);
+        free(manifestPath);
         return;
     }
 
@@ -393,6 +409,11 @@ void add(char *projectName, char *fileName)
             if (strcmp(totalBytesRead, filePath) == 0)
             {
                 printf("Warning, the file already exists in the manifest\n");
+                close(manifestFD);
+                free(totalBytesRead);
+                free(filePath);
+                free(fileNameRead);
+                free(manifestPath);
                 return;
             }
             readFile = 0;
@@ -408,18 +429,19 @@ void add(char *projectName, char *fileName)
         }
         else if (readFile)
         {
-            char *temp = malloc(strlen(totalBytesRead) + 1);
+            char *temp = malloc(strlen(totalBytesRead) +strlen(fileNameRead)+1);
             strcpy(temp, totalBytesRead);
             strcat(temp, fileNameRead);
-            totalBytesRead = realloc(totalBytesRead, strlen(temp) + 1);
-            memset(totalBytesRead, 0, strlen(temp) + 1);
+            totalBytesRead = realloc(totalBytesRead, strlen(temp)+1);
+            memset(totalBytesRead, 0, strlen(temp)+1);
             strcpy(totalBytesRead, temp);
             free(temp);
         }
     }
     close(manifestFD);
+    free(totalBytesRead);
     manifestFD = open(manifestPath, O_RDWR | O_APPEND, 00777);
-    printf("%s\n", filePath);
+    //printf("%s\n", filePath);
     int fileFD = open(filePath, O_RDONLY);
     off_t currentPos = lseek(fileFD, (size_t)0, SEEK_CUR);
     off_t size = lseek(fileFD, (size_t)0, SEEK_END);
@@ -433,19 +455,25 @@ void add(char *projectName, char *fileName)
     int i;
     for (i = 0; i < MD5_DIGEST_LENGTH; i++)
     {
-        printf("%x", result[i]);
+        //printf("%x", result[i]);
     }
-    printf("\n");
+    //printf("\n");
     char str[50];
     sprintf(str, "%02x", *(uint32_t *)result);
-    printf("%s\n", str);
+    //printf("%s\n", str);
     write(manifestFD, filePath, strlen(filePath));
     write(manifestFD, " $A ", 4);
     write(manifestFD, str, strlen(str));
     write(manifestFD, "\n", 1);
+
+    close(fileFD);
+    close(manifestFD);
+
+    free(fileNameRead);
     free(filePath);
     free(fileContent);
-    free(totalBytesRead);
+    free(result);
+    free(manifestPath);
 }
 
 /** Creates the .configure file given the ip/hostname and the port of the server.
