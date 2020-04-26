@@ -115,7 +115,6 @@ void* clientServerInteract(void* socket_arg){
 
     bzero(buffer,256);
     status = read(socket, buffer, 255);
-
     //very inefficent way of locking and unlocking- should do for each project instead of whole repository
     pthread_mutex_t lock;
     pthread_mutex_init(&lock, NULL);
