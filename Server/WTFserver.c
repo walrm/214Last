@@ -51,12 +51,14 @@ void sendFileInformation(char* path, int socket){
             strcat(strcat(nextPath, "/"), currentINode->d_name);
             write(socket,"3",1); //server letting client know it is sending a directory name
             
-            char dLength[256];
-            sprintf(dLength, "%d", strlen(currentINode->d_name));
+            printf("DIRECTORY PATH: %s\n", nextPath);
 
-            write(socket,dLength,strlen(currentINode->d_name));
+            char dBuffer[256];
+            sprintf(dBuffer, "%d", strlen(nextPath));
+
+            write(socket,dBuffer,strlen(nextPath));
             write(socket," ",1);
-            write(socket,currentINode->d_name,strlen(currentINode->d_name));
+            write(socket,nextPath,strlen(currentINode->d_name));
 
             sendFileInformation(nextPath, socket);
         }else{
@@ -98,6 +100,7 @@ void sendFileInformation(char* path, int socket){
             }
         }
     }while(currentINode!=NULL);
+    write(socket,"5",1); //Let's client know there are no more files to read
 }
 
 //Send project and all its files to the client
@@ -117,46 +120,7 @@ void checkout(char* projectName, int socket){
                     continue;
 
             if(strcmp(currentINode->d_name,projectName)==0){
-<<<<<<< Updated upstream
-                write(socket,"1",1);
-                char* manifestPath = malloc(strlen(projectName)+13);
-                bzero(manifestPath,sizeof(manifestPath));
-                manifestPath[0] = '.';
-                manifestPath[1] = '/';
-                strcat(manifestPath,projectName);
-                char m[10] = "/.Manifest";
-                strcat(manifestPath, m);
-                manifestPath[strlen(manifestPath)] = '\0';
-                printf("MANIFEST PATH: %s\n", manifestPath);
-                int manifestFD = open(manifestPath, O_RDONLY); 
-
-                struct stat manStats;
-                manifestFD = open(manifestPath, O_RDONLY);
-                if(stat(manifestPath,&manStats)<0){
-                    possibleError(socket,"ERROR reading manifest stats");
-                    return;
-                }
-
-                int size = manStats.st_size; 
-                int bytesRead = 0, bytesToRead = 0;
-                char manBuffer[256];
-                //Send size of manifest file to client
-                sprintf(manBuffer,"%d", size);
-                write(socket,manBuffer,strlen(manBuffer));
-                write(socket," ",1);
-                printf("manBuffer: %s\n",manBuffer);
-                printf("manBuffer size: %d\n", strlen(manBuffer));
-
-                //Send manifest bytes to client
-                while(size > bytesRead){
-                    bytesToRead = (size-bytesRead<256)? size-bytesRead : 255;
-                    bzero(manBuffer,256);
-                    bytesRead += read(manifestFD,manBuffer,bytesToRead);
-                    write(socket,manBuffer,bytesToRead);
-                }
-=======
                 write(socket,"1",1); //send to client that project was found
->>>>>>> Stashed changes
                 
                 //Find manifest path and open to read data
                 char* projectPath = malloc(strlen(projectName)+3);
