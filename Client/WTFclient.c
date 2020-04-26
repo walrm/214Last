@@ -351,7 +351,6 @@ void currentVersion(char *projectName)
     free(fileByteRead);
     free(gettingTotalBytes);
     close(socketFD);
-
     return;
 }
 
@@ -525,7 +524,7 @@ int getTotalBytes(int socketFD)
 }
 /**
  * Returns the name of the file or directory in a memory allocated char*. 
- * Remember to free the char* in the mehod that this helper method is called
+ * Remember to free the char* in the method that this helper method is called
  * The socket starts at the first character of the name of the file.
  */
 char *getFileName(int socketFD)
@@ -534,18 +533,21 @@ char *getFileName(int socketFD)
     char *name = calloc(1, 1);
     do
     {
+        printf("to the top\n");
         read(socketFD, gettingTotalBytes, 1);
         if (gettingTotalBytes[0] != ' ')
         {
-            char *temp = calloc(strlen(name) + 1, 1);
+            char *temp = calloc(strlen(name) + 2, 1);
             strcpy(temp, name);
             strcat(temp, gettingTotalBytes);
             free(name);
             name = calloc(strlen(temp) + 1, 1);
             strcpy(name, temp);
+            printf("Name:%s\n", name);
             free(temp);
         }
     } while (gettingTotalBytes[0] != ' ');
+    printf("Directory Name:%s\n", name);
     free(gettingTotalBytes);
     return name;
 }
@@ -617,6 +619,7 @@ void checkout(char *projectName)
         break;
     }
     free(command);
+    free(reads);
     //Creates the directory for the client
     mkdir(projectName, 00777);
     //directory:3 length of directory space name
@@ -631,13 +634,14 @@ void checkout(char *projectName)
     while (code != 5)
     {
         //printf("Code:%d\n",code);
-        
+
         if (code == 4)
         {
             int totalFileBytes = getTotalBytes(socketFD);
             char *nameOfFile = getFileName(socketFD);
             printf("Name of File:%s\n", nameOfFile);
             makeFile(socketFD, nameOfFile, totalFileBytes);
+            free(nameOfFile);
         }
         else if (code == 3)
         {
@@ -646,19 +650,13 @@ void checkout(char *projectName)
             mkdir(nameOfDirectory, 00777);
             free(nameOfDirectory);
         }
-        
 
         read(socketFD, codeS, 1);
-        printf("CodeS in loop:%s\n", codeS);
         code = atoi(codeS);
-        //printf("Code in Loop:%s\n",code);
     }
     closeConnection(socketFD);
     free(codeS);
 }
-
-
-
 
 int main(int argc, char *argv[])
 {

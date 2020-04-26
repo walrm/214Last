@@ -40,7 +40,7 @@ void sendFileInformation(char* path, int socket){
     struct dirent *currentINode = NULL;
     do{
         currentINode = readdir(cwd);
-        if(currentINode==NULL) return;
+        if(currentINode==NULL) break;
         
         //INode is directory, send directory informaiton
         if(currentINode->d_type == DT_DIR){
@@ -58,7 +58,7 @@ void sendFileInformation(char* path, int socket){
 
             // write(socket,dBuffer,strlen(dBuffer));
             // write(socket," ",1);
-            write(socket,nextPath,strlen(currentINode->d_name));
+            write(socket,nextPath,strlen(nextPath));
             write(socket," ",1);
 
             sendFileInformation(nextPath, socket);
@@ -107,7 +107,6 @@ void sendFileInformation(char* path, int socket){
         }
     }while(currentINode!=NULL);
     printf("End of directory\n");
-    write(socket,"5",1); //Let's client know there are no more files to read
 }
 
 //Send project and all its files to the client
@@ -139,7 +138,7 @@ void checkout(char* projectName, int socket){
                 printf("PROJECT PATH: %s\n", projectPath);
 
                 sendFileInformation(projectPath,socket);
-
+                write(socket,"5",1); //Let's client know there are no more files to read
                 free(projectPath);
                 closedir(cwd);
                 close(socket);
