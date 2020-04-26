@@ -46,6 +46,7 @@ void currentVersion(char* projectName, int socket){
 
             //Project found, writing manifest data to socket
             if(strcmp(currentINode->d_name,projectName)==0){
+                write(socket,"1",1);
                 char* manifestPath = malloc(strlen(projectName)+13);
                 bzero(manifestPath,sizeof(manifestPath));
                 manifestPath[0] = '.';

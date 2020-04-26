@@ -206,12 +206,12 @@ void currentVersion(char *projectName)
     {
         return;
     }
-    char* command=malloc(1+strlen(projectName));
-    bzero(command,1+strlen(projectName));
-    strcat(command,"7");
-    strcat(command,projectName);
-    write(socketFD,command,strlen(command));
-    printf("%s\n",command);
+    char *command = malloc(1 + strlen(projectName));
+    bzero(command, 1 + strlen(projectName));
+    strcat(command, "7");
+    strcat(command, projectName);
+    write(socketFD, command, strlen(command));
+    printf("%s\n", command);
     char created[1];
     read(socketFD, created, 1);
     int c = atoi(created);
@@ -227,24 +227,25 @@ void currentVersion(char *projectName)
     do
     {
         read(socketFD, gettingTotalBytes, 1);
-        printf("Getting Total Bytes:%s\n",gettingTotalBytes);
-
         if (gettingTotalBytes[0] != ' ')
         {
             strcat(i, gettingTotalBytes);
         }
     } while (gettingTotalBytes[0] != ' ');
-    printf("%s\n",i);
     int totalBytes = atoi(i);
-    printf("Total Bytes: %d\n",totalBytes);
+    printf("Total Bytes: %d\n", totalBytes);
     int bytesRead = 0;
     int isFirstLine = 1;
-    char byteRead[1];
+    char *byteRead = malloc(1);
     char *projectVersion = malloc(10);
+    bzero(byteRead,1);
     bzero(projectVersion, 10);
     //Getting the project version
     while (isFirstLine)
     {
+        free(byteRead);
+        byteRead = malloc(1);
+        bzero(byteRead, 1);
         bytesRead += read(socketFD, byteRead, 1);
         if (byteRead[0] == '\n')
         {
@@ -255,60 +256,90 @@ void currentVersion(char *projectName)
         {
             strcat(projectVersion, byteRead);
         }
-        bytesRead += read(socketFD, byteRead, 1);
     }
-    free(projectVersion);
-    int readingFile=1;
-    int readingVersion=0;
-    char* fileName=malloc(1);
-    char* versionName=malloc(1);
+
+
+
     //Getting the version of each file
+    int readingFile = 1;
+    int readingVersion = 0;
+    char *fileName = malloc(1);
+    char *versionName = malloc(1);
+    bzero(fileName,1);
+    bzero(versionName, 1);
+    char *fileByteRead = malloc(1);
     while (bytesRead < totalBytes)
     {
-        bytesRead+=(socketFD,byteRead,1);
-        if(readingFile){
-            if(byteRead[0]==' '){
-                printf("%s: ",fileName);
-                fileName=0;
-                readingVersion=1;
-                fileName=realloc(fileName,1);
+        free(fileByteRead);
+        fileByteRead = malloc(2);
+        bzero(fileByteRead, 2);
+        bytesRead += read(socketFD, fileByteRead, 1);
+        fileByteRead[1] = '\0';
+        if (readingFile)
+        {
+            if (fileByteRead[0] == ' ')
+            {
+                printf("%s \t", fileName);
+                readingFile = 0;
+                readingVersion = 1;
+                fileName = realloc(fileName, 1);
+                bzero(fileName, 1);
             }
-            else{
-                char* temp=malloc(strlen(fileName)+1);
-                bzero(temp,strlen(fileName)+1);
-                strcat(temp,fileName);
-                strcat(temp,byteRead);
-                fileName=realloc(fileName,strlen(temp));
-                bzero(fileName,strlen(fileName));
-                strcpy(fileName,temp);
+            else
+            {
+                char *temp = malloc(strlen(fileName) + 1);
+                bzero(temp, strlen(fileName) + 1);
+                strcat(temp, fileName);
+                strcat(temp, fileByteRead);
+                fileName = realloc(fileName, strlen(temp));
+                bzero(fileName, strlen(fileName));
+                strcpy(fileName, temp);
                 free(temp);
             }
         }
-        else if(readingVersion){
-            if(byteRead[0]==' '){
-                printf("%s\n",versionName);
-                readingVersion=0;
-                versionName=realloc(versionName,1);
+        else if (readingVersion)
+        {
+            if (fileByteRead[0] == ' ')
+            {
+                printf("%s\n", versionName);
+                readingVersion = 0;
+                readingFile = 0;
+                versionName = realloc(versionName, 1);
+                bzero(versionName, 1);
             }
-            else{
-                char* temp=malloc(strlen(versionName)+1);
-                bzero(temp,strlen(versionName)+1);
-                strcat(temp,versionName);
-                strcat(temp,byteRead);
-                versionName=realloc(versionName,strlen(temp));
-                bzero(versionName,strlen(versionName));
-                strcpy(versionName,temp);
+            else
+            {
+                char *temp = malloc(strlen(versionName) + 1);
+                bzero(temp, strlen(versionName) + 1);
+                strcat(temp, versionName);
+                strcat(temp, fileByteRead);
+                versionName = realloc(versionName, strlen(temp) + 1);
+                bzero(versionName, strlen(versionName));
+                strcpy(versionName, temp);
                 free(temp);
             }
         }
-        else if(byteRead[0]=='\n'){
-            readingFile=1;
-            readingVersion=0;
+        else if (fileByteRead[0] == '\n')
+        {
+            readingFile = 1;
+            readingVersion = 0;
+        }
+        else
+        {
         }
     }
+    free(projectVersion);
+    free(byteRead);
+    free(i);
+    free(command);
+    free(versionName);
     free(fileName);
     free(versionName);
+    free(fileByteRead);
+    free(gettingTotalBytes);
     close(socketFD);
+
+
     return;
 }
 
