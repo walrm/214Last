@@ -96,7 +96,7 @@ void create(char* projectName, int socket){
 }
 
 //Helper function for delete - recursively delete files and directories in project folder
-void destroyProject(char* path){
+void destroyProject(char* path, int socket){
     DIR *cwd = opendir(path);
     if(cwd == NULL){
         possibleError(socket,"ERROR on opening directory");
@@ -114,7 +114,7 @@ void destroyProject(char* path){
             char nextPath[PATH_MAX];
             strcpy(nextPath, path);
             strcat(strcat(nextPath, "/"), currentINode->d_name); //appends directory name to path
-            destroyProject(nextPath);
+            destroyProject(nextPath,socket);
 
             //Find full path of directory and remove after it has been emptied
             char* dirpath = malloc(strlen(path)+strlen(currentINode->d_name)+3);
@@ -183,7 +183,7 @@ void delete(char* projectName, int socket){
                 path[1] = '/';
                 strcat(path,projectName);
                 printf("PATH: %s\n", path);
-                destroyProject(path);
+                destroyProject(path,socket);
                 if(rmdir(path)<0){
                     possibleError(socket,"ERROR on removing project directory");
                     return;
