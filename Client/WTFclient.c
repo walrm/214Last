@@ -14,7 +14,7 @@
 #include <errno.h>
 /**
  * $C-File is changed
- * $D-File is deleted
+ * $R-File is deleted
  * $A-File is added
  * 0-Create
  * 
@@ -378,7 +378,7 @@ void add(char *projectName, char *fileName)
     char *manifestPath = malloc(11 + strlen(projectName));
     memset(manifestPath, 0, 11 + strlen(projectName));
     strcat(manifestPath, projectName);
-    strcat(manifestPath, "/.manifest\0");
+    strcat(manifestPath, "/.Manifest\0");
     int manifestFD = open(manifestPath, O_RDWR, 00777);
     int bytesRead = 1;
     char *fileNameRead = malloc(2);
@@ -456,24 +456,112 @@ void add(char *projectName, char *fileName)
     int i;
     for (i = 0; i < MD5_DIGEST_LENGTH; i++)
     {
-        //printf("%x", result[i]);
+        printf("%x", result[i]);
     }
-    //printf("\n");
+    printf("\n");
     char str[50];
     sprintf(str, "%02x", *(uint32_t *)result);
-    //printf("%s\n", str);
-    write(manifestFD, filePath, strlen(filePath));
+    printf("%s\n", str);
+    write(manifestFD, fileName, strlen(fileName));
     write(manifestFD, " $A ", 4);
     write(manifestFD, str, strlen(str));
     write(manifestFD, "\n", 1);
-
     close(fileFD);
     close(manifestFD);
-
     free(fileNameRead);
     free(filePath);
     free(fileContent);
     free(result);
+    free(manifestPath);
+}
+/**
+ * Writes a message in the .Manifest to delete a file. 
+ * If it does not exist in the .manifest, will print an error. 
+ * The project needs to exist on the client, but the file does not. 
+ * Does not connect to the server.
+ * 
+ */
+void removeFile(char *projectName, char *fileName)
+{
+    DIR *dir = opendir(projectName);
+    if (dir)
+    {
+        /* Directory exists. */
+        closedir(dir);
+    }
+    else if (ENOENT == errno)
+    {
+        printf("Directory does not exist\n");
+        return;
+    }
+    else
+    {
+        printf("Error accessing directory\n");
+        return;
+    }
+    char *manifestPath = malloc(11 + strlen(projectName));
+    memset(manifestPath, 0, 11 + strlen(projectName));
+    strcat(manifestPath, projectName);
+    strcat(manifestPath, "/.Manifest\0");
+    int manifestFD = open(manifestPath, O_RDWR|O_APPEND, 00777);
+    int bytesRead = 1;
+    char *fileNameRead = malloc(2);
+    memset(fileNameRead, 0, 2);
+    fileNameRead[1] = '\0';
+    char *totalBytesRead = malloc(1);
+    int readFile = 0;
+    char *filePath = calloc(strlen(projectName) + strlen(fileName) + 2, sizeof(char));
+    strcpy(filePath, projectName);
+    strcat(filePath, "/");
+    strcat(filePath, fileName);
+    printf("%s\n",filePath);
+    while (bytesRead > 0)
+    {
+        bytesRead = read(manifestFD, fileNameRead, 1);
+        if (readFile && fileNameRead[0] == ' ')
+        {
+            printf("%s\n", totalBytesRead);
+            printf("%s\n",totalBytesRead);
+            if (strcmp(totalBytesRead, fileName) == 0)
+            {
+                printf("Warning, the file already exists in the manifest\n");
+                int wrOff=lseek(manifestFD,-5,SEEK_CUR);
+                printf("%d\n",wrOff);
+                lseek(manifestFD,wrOff,SEEK_SET);
+                write(manifestFD, "$R ", 3);
+                close(manifestFD);
+                free(totalBytesRead);
+                free(filePath);
+                free(fileNameRead);
+                free(manifestPath);
+                return;
+            }
+            readFile = 0;
+        }
+        else if (fileNameRead[0] == ' ')
+        {
+        }
+        else if (fileNameRead[0] == '\n')
+        {
+            readFile = 1;
+            totalBytesRead = realloc(totalBytesRead, 1);
+            memset(totalBytesRead, 0, 1);
+        }
+        else if (readFile)
+        {
+            char *temp = malloc(strlen(totalBytesRead) + strlen(fileNameRead) + 1);
+            strcpy(temp, totalBytesRead);
+            strcat(temp, fileNameRead);
+            totalBytesRead = realloc(totalBytesRead, strlen(temp) + 1);
+            memset(totalBytesRead, 0, strlen(temp) + 1);
+            strcpy(totalBytesRead, temp);
+            free(temp);
+        }
+    }
+    close(manifestFD);
+    free(totalBytesRead);
+    free(fileNameRead);
+    free(filePath);
     free(manifestPath);
 }
 
@@ -657,6 +745,59 @@ void checkout(char *projectName)
     closeConnection(socketFD);
     free(codeS);
 }
+/**
+ * A useful description
+ * 
+ */
+void commit(char *projectName)
+{
+    //Makes sure the directory exists on the clients side
+    DIR *dir = opendir(projectName);
+    if (dir)
+    {
+        /* Directory exists. */
+        closedir(dir);
+    }
+    else if (ENOENT == errno)
+    {
+        printf("Directory does not exist\n");
+        return;
+    }
+    //Makes sure that there is no nonempty update file and no conflict file
+    char *updateFileCheck = calloc(strlen(projectName) + strlen("/.Update") + 1, 1);
+    strcat(updateFileCheck, projectName);
+    strcat(updateFileCheck, "/.Update");
+    struct stat stat_record;
+    if (stat(updateFileCheck, &stat_record))
+    {
+    }
+    else if (stat_record.st_size <= 1)
+    {
+    }
+    else
+    {
+        printf("Error: .Update file contains data\n");
+        return;
+    }
+    free(updateFileCheck);
+    updateFileCheck = calloc(strlen(projectName) + strlen("/.conflict") + 1, 1);
+    if (access(updateFileCheck, F_OK) != -1)
+    {
+        printf("Error: .conflict file exists\n");
+        return;
+    }
+    free(updateFileCheck);
+    int socketFD = checkConnection();
+    if (socketFD == -1)
+    {
+        return;
+    }
+    //Writes to the server the command (3) and the project name (no space in between)
+    char *command = calloc(strlen("3") + strlen(projectName) + 1, 1);
+    strcat(command, "3");
+    strcat(command, projectName);
+    write(socketFD, command, strlen(command));
+}
 
 int main(int argc, char *argv[])
 {
@@ -714,6 +855,10 @@ int main(int argc, char *argv[])
         else if (strcmp("Add", argv[1]) == 0)
         {
             add(argv[2], argv[3]);
+        }
+        else if (strcmp("Remove", argv[1]) == 0)
+        {
+            removeFile(argv[2], argv[3]);
         }
         else if (strcmp("Rollback", argv[1]) == 0)
         {
