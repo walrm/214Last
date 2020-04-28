@@ -273,6 +273,128 @@ void currentVersion(char* projectName, int socket){
     write(socket,"0",1);  //project doesn't exist, report to client
 }
 
+//Recurisve helper method to send
+void sendFileInformation(char* path, int socket){
+    DIR* cwd = opendir(path);
+    if(cwd == NULL){
+        possibleError(socket,"ERROR on opening directory");
+        return;
+    }
+
+    struct dirent *currentINode = NULL;
+    do{
+        currentINode = readdir(cwd);
+        if(currentINode==NULL) break;
+        
+        //INode is directory, send directory informaiton
+        if(currentINode->d_type == DT_DIR){
+            if (strcmp(currentINode->d_name, ".") == 0 || strcmp(currentINode->d_name, "..") == 0)
+                    continue;
+            char nextPath[PATH_MAX];
+            strcpy(nextPath, path);
+            strcat(strcat(nextPath, "/"), currentINode->d_name);
+            write(socket,"3",1); //server letting client know it is sending a directory name
+            
+            printf("DIRECTORY PATH: %s\n", nextPath);
+
+            // char dBuffer[256];
+            // sprintf(dBuffer, "%d", strlen(nextPath));
+
+            // write(socket,dBuffer,strlen(dBuffer));
+            // write(socket," ",1);
+            write(socket,nextPath,strlen(nextPath));
+            write(socket," ",1);
+
+            sendFileInformation(nextPath, socket);
+        }else{
+            write(socket, "4", 1); //server letting client know it is sending file
+
+            char* filePath = malloc(strlen(path)+strlen(currentINode->d_name)+2);
+            bzero(filePath,sizeof(filePath));
+            strcat(filePath,path);
+            strcat(filePath,"/");
+            strcat(filePath,currentINode->d_name);
+            filePath[strlen(filePath)] = '\0';
+            printf("FILE PATH: %s\n", filePath);
+            int fd = open(filePath, O_RDONLY); 
+            
+            struct stat fileStats;
+            if(stat(filePath,&fileStats)<0){
+                possibleError(socket,"ERROR reading file stats");
+                return;
+            }
+
+            int size = fileStats.st_size; 
+            int bytesRead = 0, bytesToRead = 0;
+            char buffer[256];
+            
+            //Send size of manifest file to client
+            sprintf(buffer,"%d", size);
+            write(socket,buffer,strlen(buffer));
+            write(socket," ",1);
+            printf("buffer: %s\n",buffer); 
+            printf("buffer size: %d\n", strlen(buffer));
+            write(socket,filePath,strlen(filePath));
+            write(socket, " ", 1);
+
+            //write(socket,filePath,strlen(filePath));
+            //write(socket, " ", 1);
+
+            //Send manifest bytes to client
+            while(size > bytesRead){
+                bytesToRead = (size-bytesRead<256)? size-bytesRead : 255;
+                bzero(buffer,256);
+                bytesRead += read(fd,buffer,bytesToRead);
+                printf("BUFFER:\n%s\n", buffer);
+                write(socket,buffer,bytesToRead);
+            }
+        }
+    }while(currentINode!=NULL);
+    printf("End of directory\n");
+}
+
+//Send project and all its files to the client
+void checkout(char* projectName, int socket){
+    //opens (repository) directory from root path and looks if project already exists
+    DIR *cwd = opendir("./");
+    if(cwd == NULL){
+        possibleError(socket,"ERROR on opening directory");
+        return;
+    }
+
+    struct dirent *currentINode = NULL;
+    do{
+        currentINode = readdir(cwd);
+        if(currentINode!=NULL && currentINode->d_type == DT_DIR){
+            if (strcmp(currentINode->d_name, ".") == 0 || strcmp(currentINode->d_name, "..") == 0)
+                    continue;
+
+            if(strcmp(currentINode->d_name,projectName)==0){
+                write(socket,"1",1); //send to client that project was found
+                
+                //Find manifest path and open to read data
+                char* projectPath = malloc(strlen(projectName)+3);
+                bzero(projectPath,sizeof(projectPath));
+                projectPath[0] = '.';
+                projectPath[1] = '/';
+                strcat(projectPath,projectName);
+                projectPath[strlen(projectPath)] = '\0';
+                printf("PROJECT PATH: %s\n", projectPath);
+
+                sendFileInformation(projectPath,socket);
+                write(socket,"5",1); //Let's client know there are no more files to read
+                free(projectPath);
+                closedir(cwd);
+                close(socket);
+                return;
+            }
+
+        }
+    }while(currentINode!=NULL); 
+    write(socket,"0",1); //write to client project doesn't exist
+}
+
+
 // void writeProjPath(char* projectPath, int manifestFD){
 //     DIR* cwd = opendir(projectPath);
 //     struct dirent *currentINode = NULL;

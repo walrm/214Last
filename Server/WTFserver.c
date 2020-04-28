@@ -13,7 +13,7 @@
 
 #include "serverFunctions.h"
 
-int s1, s2;
+int socketfd, newsocketfd;
 
 //Method to print error and return -1 as error
 void pError(char* err){
@@ -24,94 +24,14 @@ void pError(char* err){
 //signal handler for closing server with ctrl+c
 void stopServer(int sigNum){
     printf("Closing Server Connection...\n");
-    close(s1);
-    close(s2);
+    close(socketfd);
+    close(newsocketfd);
     exit(0);
 }
 
-//Recurisve helper method to send
-void sendFileInformation(char* path, int socket){
-    DIR* cwd = opendir(path);
-    if(cwd == NULL){
-        possibleError(socket,"ERROR on opening directory");
-        return;
-    }
-
-    struct dirent *currentINode = NULL;
-    do{
-        currentINode = readdir(cwd);
-        if(currentINode==NULL) break;
-        
-        //INode is directory, send directory informaiton
-        if(currentINode->d_type == DT_DIR){
-            if (strcmp(currentINode->d_name, ".") == 0 || strcmp(currentINode->d_name, "..") == 0)
-                    continue;
-            char nextPath[PATH_MAX];
-            strcpy(nextPath, path);
-            strcat(strcat(nextPath, "/"), currentINode->d_name);
-            write(socket,"3",1); //server letting client know it is sending a directory name
-            
-            printf("DIRECTORY PATH: %s\n", nextPath);
-
-            // char dBuffer[256];
-            // sprintf(dBuffer, "%d", strlen(nextPath));
-
-            // write(socket,dBuffer,strlen(dBuffer));
-            // write(socket," ",1);
-            write(socket,nextPath,strlen(nextPath));
-            write(socket," ",1);
-
-            sendFileInformation(nextPath, socket);
-        }else{
-            write(socket, "4", 1); //server letting client know it is sending file
-
-            char* filePath = malloc(strlen(path)+strlen(currentINode->d_name)+2);
-            bzero(filePath,sizeof(filePath));
-            strcat(filePath,path);
-            strcat(filePath,"/");
-            strcat(filePath,currentINode->d_name);
-            filePath[strlen(filePath)] = '\0';
-            printf("FILE PATH: %s\n", filePath);
-            int fd = open(filePath, O_RDONLY); 
-            
-            struct stat fileStats;
-            if(stat(filePath,&fileStats)<0){
-                possibleError(socket,"ERROR reading file stats");
-                return;
-            }
-
-            int size = fileStats.st_size; 
-            int bytesRead = 0, bytesToRead = 0;
-            char buffer[256];
-            
-            //Send size of manifest file to client
-            sprintf(buffer,"%d", size);
-            write(socket,buffer,strlen(buffer));
-            write(socket," ",1);
-            printf("buffer: %s\n",buffer); 
-            printf("buffer size: %d\n", strlen(buffer));
-            write(socket,filePath,strlen(filePath));
-            write(socket, " ", 1);
-
-            //write(socket,filePath,strlen(filePath));
-            //write(socket, " ", 1);
-
-            //Send manifest bytes to client
-            while(size > bytesRead){
-                bytesToRead = (size-bytesRead<256)? size-bytesRead : 255;
-                bzero(buffer,256);
-                bytesRead += read(fd,buffer,bytesToRead);
-                printf("BUFFER:\n%s\n", buffer);
-                write(socket,buffer,bytesToRead);
-            }
-        }
-    }while(currentINode!=NULL);
-    printf("End of directory\n");
-}
-
-//Send project and all its files to the client
-void checkout(char* projectName, int socket){
-    //opens (repository) directory from root path and looks if project already exists
+//TODO: commit command. Send manifest file over and have client update files and then receive commit file
+//TODO: FREE 2 mallocs, close 2? things
+void commit(char* projectName, int socket){
     DIR *cwd = opendir("./");
     if(cwd == NULL){
         possibleError(socket,"ERROR on opening directory");
@@ -126,28 +46,95 @@ void checkout(char* projectName, int socket){
                     continue;
 
             if(strcmp(currentINode->d_name,projectName)==0){
-                write(socket,"1",1); //send to client that project was found
+                write(socket,"1",1); 
                 
-                //Find manifest path and open to read data
-                char* projectPath = malloc(strlen(projectName)+3);
-                bzero(projectPath,sizeof(projectPath));
-                projectPath[0] = '.';
-                projectPath[1] = '/';
-                strcat(projectPath,projectName);
-                projectPath[strlen(projectPath)] = '\0';
-                printf("PROJECT PATH: %s\n", projectPath);
+                char* manifestPath = malloc(strlen(projectName)+13);
+                bzero(manifestPath,sizeof(manifestPath));
+                manifestPath[0] = '.';
+                manifestPath[1] = '/';
+                strcat(manifestPath,projectName);
+                char m[10] = "/.Manifest";
+                strcat(manifestPath, m);
+                manifestPath[strlen(manifestPath)] = '\0';
+                printf("MANIFEST PATH: %s\n", manifestPath);
+                int manifestFD = open(manifestPath, O_RDONLY); 
 
-                sendFileInformation(projectPath,socket);
-                write(socket,"5",1); //Let's client know there are no more files to read
-                free(projectPath);
-                closedir(cwd);
-                close(socket);
-                return;
-            }
+                //Use stats to read total bytes of manifest file
+                struct stat manStats;
+                manifestFD = open(manifestPath, O_RDONLY);
+                if(stat(manifestPath,&manStats)<0){
+                    possibleError(socket,"ERROR reading manifest stats");
+                    return;
+                }
+
+                int size = manStats.st_size; 
+                int bytesRead = 0, bytesToRead = 0;
+                char manBuffer[256];
+                
+                //Send size of manifest file to client
+                sprintf(manBuffer,"%d", size);
+                write(socket,manBuffer,strlen(manBuffer));
+                write(socket," ",1);
+                printf("manBuffer: %s\n",manBuffer);
+                printf("manBuffer size: %d\n", strlen(manBuffer));
+
+                //Send manifest bytes to client
+                while(size > bytesRead){
+                    bytesToRead = (size-bytesRead<256)? size-bytesRead : 255;
+                    bzero(manBuffer,256);
+                    bytesRead += read(manifestFD,manBuffer,bytesToRead);
+                    printf("MANBUFFER:\n%s\n", manBuffer);
+                    write(socket,manBuffer,bytesToRead);
+                }
+
+                //Receive status and then receive commit file
+                int i = 0;
+                char* status = malloc(2);
+                
+                read(socket,status,1); //status of commit from client
+
+                //Read in commit file if success on client side
+                char commit[20];
+                sprintf(commit, ".Commit%d", i);
+                int commitFD = open(commit, O_CREAT, 00777);
+                while(commitFD == -1){
+                    i++;
+                    sprintf(commit, ".Commit%d", i);
+                    commitFD = open(commit, O_CREAT, 00777);
+                }
+                
+                commitFD = open(commit, O_RDWR);
+                char s[2];
+                char buffer[256];
+                int totalBytes = 0, bytesRead = 0;
+                do{
+                    bzero(s,2);
+                    read(socket,s,1);
+                    if(buffer[0] != ' ')
+                        strcat(buffer,s);
+                }while(buffer[0] != ' ');
+
+                printf("SIZE OF COMMIT FILE: %s\n", buffer);
+
+                totalBytes = atoi(buffer);
+
+                printf("TOTALBYTES: %d\n", totalBytes);
+
+                while(bytesRead<totalBytes){
+                    bytesToRead = (size-bytesRead<256)? size-bytesRead : 255;
+                    bzero(buffer,256);
+                    bytesRead += read(socket, buffer, bytesToRead);
+                    printf("BUFFER READ: %s\n",buffer);
+                    write(commitFD,buffer,bytesToRead);
+                }
+
+                
+
+            }   
 
         }
-    }while(currentINode!=NULL); 
-    write(socket,"0",1); //write to client project doesn't exist
+    }while(currentINode!=NULL); //project doesn't exist
+
 }
 
 //Handles communication between the server and client socket
@@ -191,6 +178,8 @@ void* clientServerInteract(void* socket_arg){
 
     if(command == 0){ //Checkout 
         checkout(projectName, socket);
+    }else if(command == 3){ //Commit
+        commit(projectName,socket);
     }else if(command == 5){ //Create 
         create(projectName, socket);
     }else if(command == 6){ //Delete 
@@ -206,7 +195,7 @@ int main(int argc, char* argv[]){
     if(argc < 2)
         pError("Invalid number of arguments");
         
-    int socketfd, port, pid, clilen, newsocketfd;
+    int port, pid, clilen;
     char buffer[256];
     struct sockaddr_in serv_addr; //address info for server client
     struct sockaddr_in cli_addr; //address info for client struct
@@ -246,8 +235,6 @@ int main(int argc, char* argv[]){
     printf("Waiting for Client Connection...\n");
     while(1){
         newsocketfd = accept(socketfd, (struct sockaddr *) &cli_addr, &clilen);
-        s1 = socketfd;
-        s2 = newsocketfd;
         if(newsocketfd<0){
             pError("ERROR on accept");
         }
