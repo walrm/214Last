@@ -995,8 +995,20 @@ void commit(char *projectName)
     off_t currentPos = lseek(clientManifestFD, (size_t)0, SEEK_CUR);
     off_t clientManifestSize = lseek(clientManifestFD, (size_t)0, SEEK_END);
     lseek(clientManifestFD, (size_t)0, SEEK_SET);
-    Manifest *man = createManifestStruct(clientManifestFD,clientManifestSize);
+    Manifest* clientMan = createManifestStruct(clientManifestFD,clientManifestSize);
     free(clientManifest);
+
+    char* serverManifestRead=calloc(2,1);
+    serverManifestRead[1]='\0';
+    char* serverManifestSizeS=calloc(10,1);
+    while(serverManifestRead[0]!=' '){
+        read(socketFD,serverManifestRead,1);
+        if(serverManifestRead[0]!=' '){
+            strcat(serverManifestSizeS,serverManifestRead);
+        }
+    }
+    int serverManifestSize=atoi(serverManifestSizeS);
+    Manifest* serverMan= createManifestStruct(socketFD,clientManifestSize);
 }
 
 int main(int argc, char *argv[])
