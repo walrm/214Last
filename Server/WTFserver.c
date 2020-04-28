@@ -106,7 +106,8 @@ void commit(char* projectName, int socket){
                 commitFD = open(commit, O_RDWR);
                 char s[2];
                 char buffer[256];
-                int totalBytes = 0, bytesRead = 0;
+                int totalBytes = 0;
+                bytesRead = 0;
                 do{
                     bzero(s,2);
                     read(socket,s,1);

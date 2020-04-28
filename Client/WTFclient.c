@@ -35,13 +35,14 @@ typedef struct _manifest
     Node *files;
 } Manifest;
 
-Manifest* createManifestStruct(int fd, int totalBytes)
+Manifest *createManifestStruct(int fd, int totalBytes)
 {
     Manifest *man = (Manifest *)malloc(sizeof(Manifest));
     int bytesRead = 0;
-    char *s = malloc(2);
+    char *s = calloc(2,1);
     char *clientProjectVersionS = malloc(10);
-    s = "";
+    s[0]='a';
+    s[1]='\0';
     while (s[0] != '\n')
     {
         bytesRead += read(fd, s, 1);
@@ -59,15 +60,17 @@ Manifest* createManifestStruct(int fd, int totalBytes)
     int readingCodeB1 = 0;
     int readingHash = 0;
     int readingVersion = 0;
-    man->files= malloc(sizeof(Node));
+    man->files = malloc(sizeof(Node));
     Node *ptr = man->files;
     while (bytesRead < totalBytes)
     {
+        //printf("BytesRead:%d\nBytesTotal:%d\n",bytesRead,totalBytes);
         bytesRead += read(fd, gettingTotalBytes, 1);
-        if (readingName)//reading the name of the file
+        if (readingName) //reading the name of the file
         {
             if (gettingTotalBytes[0] == ' ')
             {
+                printf("Filename:%s\n",name);
                 readingName = 0;
                 readingCodeB1 = 1;
                 ptr->fileName = malloc(strlen(name));
@@ -77,19 +80,19 @@ Manifest* createManifestStruct(int fd, int totalBytes)
             }
             else
             {
-                char *temp = malloc(strlen(name) + strlen(gettingTotalBytes) + 1);
+                char *temp = calloc(strlen(name) + strlen(gettingTotalBytes) + 1,1);
                 strcat(temp, name);
                 strcat(temp, gettingTotalBytes);
                 temp[strlen(temp)] = '\0';
                 free(name);
-                name = calloc(strlen(temp) + 1, 1);
+                name = calloc(strlen(temp), 1);
                 strcpy(name, temp);
                 free(temp);
             }
         }
         else if (readingCodeB1) //reading the first byte of code/version
         {
-            char *temp = malloc(strlen(name) + strlen(gettingTotalBytes) + 1);
+            char *temp = calloc(strlen(name) + strlen(gettingTotalBytes) + 1,1);
             strcat(temp, name);
             strcat(temp, gettingTotalBytes);
             temp[strlen(temp)] = '\0';
@@ -113,6 +116,7 @@ Manifest* createManifestStruct(int fd, int totalBytes)
         {
             if (gettingTotalBytes[0] == ' ')
             {
+                printf("CODE:%s\n",name);
                 if (strcmp(name, "$M") == 0)
                 { //Modify
                     ptr->code = 2;
@@ -132,7 +136,7 @@ Manifest* createManifestStruct(int fd, int totalBytes)
             }
             else
             {
-                char *temp = malloc(strlen(name) + strlen(gettingTotalBytes) + 1);
+                char *temp = calloc(strlen(name) + strlen(gettingTotalBytes) + 1,1);
                 strcat(temp, name);
                 strcat(temp, gettingTotalBytes);
                 temp[strlen(temp)] = '\0';
@@ -146,6 +150,8 @@ Manifest* createManifestStruct(int fd, int totalBytes)
         {
             if (gettingTotalBytes[0] == ' ')
             {
+                printf("Version:%s\n",name);
+
                 ptr->version = atoi(name);
                 free(name);
                 name = calloc(1, 1);
@@ -154,7 +160,7 @@ Manifest* createManifestStruct(int fd, int totalBytes)
             }
             else
             {
-                char *temp = malloc(strlen(name) + strlen(gettingTotalBytes) + 1);
+                char *temp = calloc(strlen(name) + strlen(gettingTotalBytes) + 1,1);
                 strcat(temp, name);
                 strcat(temp, gettingTotalBytes);
                 temp[strlen(temp)] = '\0';
@@ -168,16 +174,19 @@ Manifest* createManifestStruct(int fd, int totalBytes)
         {
             if (gettingTotalBytes[0] == '\n')
             {
-                strcpy(ptr->hash, name);
+                printf("end of reading hash?\n");
                 readingName = 1;
                 readingHash = 0;
                 ptr->hash = calloc(strlen(name) + 1, 1);
-                ptr->next = (Node *)malloc(sizeof(Node));
+                strcpy(ptr->hash,name);
+                free(name);
+                name=calloc(1,1);
+                ptr->next = (Node*)malloc(sizeof(Node));
                 ptr = ptr->next;
             }
             else
             {
-                char *temp = malloc(strlen(name) + strlen(gettingTotalBytes) + 1);
+                char *temp = calloc(strlen(name) + strlen(gettingTotalBytes) + 1,1);
                 strcat(temp, name);
                 strcat(temp, gettingTotalBytes);
                 temp[strlen(temp)] = '\0';
@@ -934,7 +943,7 @@ void commit(char *projectName)
     DIR *dir = opendir(projectName);
     if (dir)
     {
-        /* Directory exists. */
+        printf("Directory Exists on client\n");
         closedir(dir);
     }
     else if (ENOENT == errno)
@@ -965,6 +974,10 @@ void commit(char *projectName)
         printf("Error: .conflict file exists\n");
         return;
     }
+    else
+    {
+        printf(".conflict file does not exist\n");
+    }
     free(updateFileCheck);
     int socketFD = checkConnection();
     if (socketFD == -1)
@@ -972,6 +985,7 @@ void commit(char *projectName)
         return;
     }
     //Writes to the server the command (3) and the project name (no space in between)
+    printf("Here\n");
     char *command = calloc(strlen("3") + strlen(projectName) + 1, 1);
     strcat(command, "3");
     strcat(command, projectName);
@@ -987,6 +1001,10 @@ void commit(char *projectName)
         printf("Project does not exist on the server");
         return;
     }
+    else
+    {
+        printf("Project Exists on server\n");
+    }
     //Get client manifest and manifest version
     char *clientManifest = malloc(strlen(projectName) + strlen("/.Manifest") + 1);
     strcat(clientManifest, projectName);
@@ -995,20 +1013,23 @@ void commit(char *projectName)
     off_t currentPos = lseek(clientManifestFD, (size_t)0, SEEK_CUR);
     off_t clientManifestSize = lseek(clientManifestFD, (size_t)0, SEEK_END);
     lseek(clientManifestFD, (size_t)0, SEEK_SET);
-    Manifest* clientMan = createManifestStruct(clientManifestFD,clientManifestSize);
+    printf("Create manifest fileSize:%d\n",clientManifestSize);
+    Manifest *clientMan = createManifestStruct(clientManifestFD, clientManifestSize);
     free(clientManifest);
-
-    char* serverManifestRead=calloc(2,1);
-    serverManifestRead[1]='\0';
-    char* serverManifestSizeS=calloc(10,1);
-    while(serverManifestRead[0]!=' '){
-        read(socketFD,serverManifestRead,1);
-        if(serverManifestRead[0]!=' '){
-            strcat(serverManifestSizeS,serverManifestRead);
+    printf("hello\n");
+    char *serverManifestRead = calloc(2, 1);
+    serverManifestRead[1] = '\0';
+    char *serverManifestSizeS = calloc(10, 1);
+    while (serverManifestRead[0] != ' ')
+    {
+        read(socketFD, serverManifestRead, 1);
+        if (serverManifestRead[0] != ' ')
+        {
+            strcat(serverManifestSizeS, serverManifestRead);
         }
     }
-    int serverManifestSize=atoi(serverManifestSizeS);
-    Manifest* serverMan= createManifestStruct(socketFD,clientManifestSize);
+    int serverManifestSize = atoi(serverManifestSizeS);
+    Manifest *serverMan = createManifestStruct(socketFD, serverManifestSize);
 }
 
 int main(int argc, char *argv[])
