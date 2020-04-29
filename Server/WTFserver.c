@@ -211,7 +211,6 @@ Manifest *createManifestStruct(int fd, int totalBytes)
 }
 
 //TODO: commit command. Send manifest file over and have client update files and then receive commit file
-//TODO: FREE 2 mallocs, close 2? things
 void commit(char* projectName, int socket){
     DIR *cwd = opendir("./");
     if(cwd == NULL){
@@ -237,7 +236,6 @@ void commit(char* projectName, int socket){
 
                 //Use stats to read total bytes of manifest file
                 struct stat manStats;
-                manifestFD = open(manifestPath, O_RDONLY);
                 if(stat(manifestPath,&manStats)<0){
                     possibleError(socket,"ERROR reading manifest stats");
                     return;
@@ -268,6 +266,13 @@ void commit(char* projectName, int socket){
                 char* status = malloc(2);
                 
                 read(socket,status,1); //status of commit from client
+                int st = atoi(status);
+                free(status);
+                if(st == 0){
+                    free(manifestPath);
+                    close(manifestFD);
+                    return;
+                }
 
                 //Read in commit file if success on client side
                 char *commit = malloc(strlen(projectName)+13);
@@ -292,8 +297,6 @@ void commit(char* projectName, int socket){
                         strcat(buffer,s);
                 }while(s[0] != ' ');
 
-                printf("SIZE OF COMMIT FILE: %s\n", buffer);
-
                 totalBytes = atoi(buffer);
 
                 printf("TOTALBYTES: %d\n", totalBytes);
@@ -308,6 +311,11 @@ void commit(char* projectName, int socket){
                 }
 
                 write(socket,"1",1); //write to client - commit successfully stored in server side
+                
+                free(commit);
+                free(manifestPath);
+                close(commitFD);
+                close(manifestFD);
                 return;
             }   
 
