@@ -36,12 +36,18 @@ typedef struct _manifest
     Node *files;
 } Manifest;
 
+/**Returns the file size given the file descriptor
+ * does not close the file
+ * 
+ * @param fd The file descriptor of the file
+ * @return the size of the file
+ */
 int getFileSize(int fd)
 {
-    struct stat statbuf;
-    if (fstat(fd, &statbuf) < 0)
-        return -1;
-    return statbuf.st_size;
+    off_t currentPos = lseek(fd, (size_t)0, SEEK_CUR);
+    off_t size = lseek(fd, (size_t)0, SEEK_END);
+    lseek(fd, (size_t)0, SEEK_SET);
+    return size;
 }
 /**Gets a string from an integer
  * The string has to be freed;
@@ -53,7 +59,13 @@ char *itoa(int num)
     sprintf(str, "%d", num);
     return str;
 }
-
+/**Adds the given byte to the end of the string
+ * by freeing and reallocating memory to the string
+ * 
+ * @param str: the string to add the byte to. Must have allocated memory
+ * @param byte: the byte to add at the end of the string
+ * @return the concatenated string
+ */
 char *addByteToString(char *str, char *byte)
 {
     char *temp = calloc(strlen(str) + strlen(byte) + 1, 1);
@@ -66,6 +78,12 @@ char *addByteToString(char *str, char *byte)
     free(temp);
     return str;
 }
+
+/*Gets the live hash of a file given the Node* for the file from the manifest
+ * 
+ * 
+ * 
+ */
 char *computeLiveHash(Node *ptr, char *projectName)
 {
     unsigned char result[MD5_DIGEST_LENGTH];
@@ -89,7 +107,14 @@ char *computeLiveHash(Node *ptr, char *projectName)
     free(filePath);
     return str;
 }
-
+/**
+ * Creates a manifest struct given the fileDescriptor to read from that starts with the first byte of the manifest file,
+ * the total bytes to read
+ * the name of the project of the manifest file
+ * and whether the manifest file is on the client side or the server side
+ * 
+ * Returns the manifest file, with each file being held in a Node*
+ */
 Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int isClientSide)
 {
     printf("Creating Manifest Struct\n");
@@ -149,26 +174,12 @@ Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int is
             }
             else
             {
-                char *temp = calloc(strlen(name) + strlen(gettingTotalBytes) + 1, 1);
-                strcat(temp, name);
-                strcat(temp, gettingTotalBytes);
-                temp[strlen(temp)] = '\0';
-                free(name);
-                name = calloc(strlen(temp), 1);
-                strcpy(name, temp);
-                free(temp);
+                name=addByteToString(name,gettingTotalBytes);
             }
         }
         else if (readingCodeB1) //reading the first byte of code/version
         {
-            char *temp = calloc(strlen(name) + strlen(gettingTotalBytes) + 1, 1);
-            strcat(temp, name);
-            strcat(temp, gettingTotalBytes);
-            temp[strlen(temp)] = '\0';
-            free(name);
-            name = calloc(strlen(temp) + 1, 1);
-            strcpy(name, temp);
-            free(temp);
+            name=addByteToString(name,gettingTotalBytes);
             if (gettingTotalBytes[0] == '$')
             {
                 readingCode = 1;
@@ -204,14 +215,7 @@ Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int is
             }
             else
             {
-                char *temp = calloc(strlen(name) + strlen(gettingTotalBytes) + 1, 1);
-                strcat(temp, name);
-                strcat(temp, gettingTotalBytes);
-                temp[strlen(temp)] = '\0';
-                free(name);
-                name = calloc(strlen(temp) + 1, 1);
-                strcpy(name, temp);
-                free(temp);
+                name=addByteToString(name,gettingTotalBytes);
             }
         }
         else if (readingVersion) //reading the version
@@ -227,14 +231,7 @@ Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int is
             }
             else
             {
-                char *temp = calloc(strlen(name) + strlen(gettingTotalBytes) + 1, 1);
-                strcat(temp, name);
-                strcat(temp, gettingTotalBytes);
-                temp[strlen(temp)] = '\0';
-                free(name);
-                name = calloc(strlen(temp) + 1, 1);
-                strcpy(name, temp);
-                free(temp);
+                name=addByteToString(name,gettingTotalBytes);
             }
         }
         else if (readingHash) //reading the hash
@@ -264,14 +261,7 @@ Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int is
             }
             else
             {
-                char *temp = calloc(strlen(name) + strlen(gettingTotalBytes) + 1, 1);
-                strcat(temp, name);
-                strcat(temp, gettingTotalBytes);
-                temp[strlen(temp)] = '\0';
-                free(name);
-                name = calloc(strlen(temp) + 1, 1);
-                strcpy(name, temp);
-                free(temp);
+                name=addByteToString(name,gettingTotalBytes);
             }
         }
     }
@@ -332,9 +322,7 @@ int checkConnection()
         return -1;
     }
     int configFD = open(".configure", O_RDONLY);
-    off_t currentPos = lseek(configFD, (size_t)0, SEEK_CUR);
-    off_t size = lseek(configFD, (size_t)0, SEEK_END);
-    lseek(configFD, (size_t)0, SEEK_SET);
+    int size=getFileSize(configFD);
     char *fileInfo = (char *)malloc(size + 1);
     read(configFD, fileInfo, size);
     char *space = strchr(fileInfo, ' ');
@@ -1121,9 +1109,7 @@ void commit(char *projectName)
     strcat(clientManifest, projectName);
     strcat(clientManifest, "/.Manifest");
     int clientManifestFD = open(clientManifest, O_RDWR, 00777);
-    off_t currentPos = lseek(clientManifestFD, (size_t)0, SEEK_CUR);
-    off_t clientManifestSize = lseek(clientManifestFD, (size_t)0, SEEK_END);
-    lseek(clientManifestFD, (size_t)0, SEEK_SET);
+    int clientManifestSize=getFileSize(clientManifestFD);
     Manifest *clientMan = createManifestStruct(clientManifestFD, clientManifestSize, projectName, 1);
     free(clientManifest);
     char *serverManifestRead = calloc(2, 1);
