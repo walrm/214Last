@@ -58,7 +58,7 @@ void create(char* projectName, int socket){
         return;
     }
 
-    write(manifestFD,"0\n",1);  //Writing version number 0 on the first line
+    write(manifestFD,"0\n",2);  //Writing version number 0 on the first line
 
     //Write to client that project has been successfully created on server side
     write(socket,"1",1); 
@@ -135,7 +135,7 @@ void destroyProject(char* path, int socket){
 
         //INode is a file
         }else if(currentINode!=NULL){
-            char* file = malloc(strlen(path)+strlen(currentINode->d_name)+3);
+            char* file = malloc(strlen(path)+strlen(currentINode->d_name)+2);
             if(file == NULL){
                 possibleError(socket,"ERROR on malloc");
                 return;

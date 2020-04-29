@@ -15,6 +15,21 @@
 
 int socketfd, newsocketfd;
 
+typedef struct _node
+{
+    char *fileName;
+    char *hash;
+    int code; //0:Nothing,1:Add,2:Modify,3:Delete
+    int version;
+    struct _node *next;
+} Node;
+
+typedef struct _manifest
+{
+    int manifestVersion;
+    Node *files;
+} Manifest;
+
 //Method to print error and return -1 as error
 void pError(char* err){
     printf("%s\n",err);
@@ -27,6 +42,172 @@ void stopServer(int sigNum){
     close(socketfd);
     close(newsocketfd);
     exit(0);
+}
+
+Manifest *createManifestStruct(int fd, int totalBytes)
+{
+    Manifest *man = (Manifest *)malloc(sizeof(Manifest));
+    int bytesRead = 0;
+    char *s = calloc(2,1);
+    char *clientProjectVersionS = malloc(10);
+    s[0]='a';
+    s[1]='\0';
+    while (s[0] != '\n')
+    {
+        bytesRead += read(fd, s, 1);
+        if (s[0] != '\n')
+        {
+            strcat(clientProjectVersionS, s);
+        }
+    }
+    man->manifestVersion = atoi(clientProjectVersionS);
+    char *gettingTotalBytes = calloc(2, 1);
+    gettingTotalBytes[1] = '\0';
+    char *name = calloc(1, 1);
+    int readingName = 1;
+    int readingCode = 0;
+    int readingCodeB1 = 0;
+    int readingHash = 0;
+    int readingVersion = 0;
+    man->files = malloc(sizeof(Node));
+    Node *ptr = man->files;
+    while (bytesRead < totalBytes)
+    {
+        //printf("BytesRead:%d\nBytesTotal:%d\n",bytesRead,totalBytes);
+        bytesRead += read(fd, gettingTotalBytes, 1);
+        if (readingName) //reading the name of the file
+        {
+            if (gettingTotalBytes[0] == ' ')
+            {
+                printf("Filename:%s\n",name);
+                readingName = 0;
+                readingCodeB1 = 1;
+                ptr->fileName = malloc(strlen(name));
+                strcpy(ptr->fileName, name);
+                free(name);
+                name = calloc(1, 1);
+            }
+            else
+            {
+                char *temp = calloc(strlen(name) + strlen(gettingTotalBytes) + 1,1);
+                strcat(temp, name);
+                strcat(temp, gettingTotalBytes);
+                temp[strlen(temp)] = '\0';
+                free(name);
+                name = calloc(strlen(temp), 1);
+                strcpy(name, temp);
+                free(temp);
+            }
+        }
+        else if (readingCodeB1) //reading the first byte of code/version
+        {
+            char *temp = calloc(strlen(name) + strlen(gettingTotalBytes) + 1,1);
+            strcat(temp, name);
+            strcat(temp, gettingTotalBytes);
+            temp[strlen(temp)] = '\0';
+            free(name);
+            name = calloc(strlen(temp) + 1, 1);
+            strcpy(name, temp);
+            free(temp);
+            if (gettingTotalBytes[0] == '$')
+            {
+                readingCode = 1;
+                readingCodeB1 = 0;
+            }
+            else
+            {
+                ptr->code = 0;
+                readingCodeB1 = 0;
+                readingVersion = 1;
+            }
+        }
+        else if (readingCode) //reading the code
+        {
+            if (gettingTotalBytes[0] == ' ')
+            {
+                printf("CODE:%s\n",name);
+                if (strcmp(name, "$M") == 0)
+                { //Modify
+                    ptr->code = 2;
+                }
+                else if (strcmp(name, "$A") == 0)
+                { //Add
+                    ptr->code = 1;
+                }
+                else
+                { //Remove
+                    ptr->code = 3;
+                }
+                free(name);
+                name = calloc(1, 1);
+                readingVersion = 1;
+                readingCode = 0;
+            }
+            else
+            {
+                char *temp = calloc(strlen(name) + strlen(gettingTotalBytes) + 1,1);
+                strcat(temp, name);
+                strcat(temp, gettingTotalBytes);
+                temp[strlen(temp)] = '\0';
+                free(name);
+                name = calloc(strlen(temp) + 1, 1);
+                strcpy(name, temp);
+                free(temp);
+            }
+        }
+        else if (readingVersion) //reading the version
+        {
+            if (gettingTotalBytes[0] == ' ')
+            {
+                printf("Version:%s\n",name);
+
+                ptr->version = atoi(name);
+                free(name);
+                name = calloc(1, 1);
+                readingVersion = 0;
+                readingHash = 1;
+            }
+            else
+            {
+                char *temp = calloc(strlen(name) + strlen(gettingTotalBytes) + 1,1);
+                strcat(temp, name);
+                strcat(temp, gettingTotalBytes);
+                temp[strlen(temp)] = '\0';
+                free(name);
+                name = calloc(strlen(temp) + 1, 1);
+                strcpy(name, temp);
+                free(temp);
+            }
+        }
+        else if (readingHash) //reading the hash
+        {
+            if (gettingTotalBytes[0] == '\n')
+            {
+                printf("end of reading hash?\n");
+                readingName = 1;
+                readingHash = 0;
+                ptr->hash = calloc(strlen(name) + 1, 1);
+                strcpy(ptr->hash,name);
+                free(name);
+                name=calloc(1,1);
+                ptr->next = (Node*)malloc(sizeof(Node));
+                ptr = ptr->next;
+            }
+            else
+            {
+                char *temp = calloc(strlen(name) + strlen(gettingTotalBytes) + 1,1);
+                strcat(temp, name);
+                strcat(temp, gettingTotalBytes);
+                temp[strlen(temp)] = '\0';
+                free(name);
+                name = calloc(strlen(temp) + 1, 1);
+                strcpy(name, temp);
+                free(temp);
+            }
+        }
+    }
+    free(ptr);
+    return man;
 }
 
 //TODO: commit command. Send manifest file over and have client update files and then receive commit file
@@ -121,21 +302,116 @@ void commit(char* projectName, int socket){
 
                 printf("TOTALBYTES: %d\n", totalBytes);
 
+                //write out commit file from client
                 while(bytesRead<totalBytes){
-                    bytesToRead = (size-bytesRead<256)? size-bytesRead : 255;
+                    bytesToRead = (totalBytes-bytesRead<256)? totalBytes-bytesRead : 255;
                     bzero(buffer,256);
                     bytesRead += read(socket, buffer, bytesToRead);
                     printf("BUFFER READ: %s\n",buffer);
                     write(commitFD,buffer,bytesToRead);
                 }
 
-                
-
+                write(socket,"1",1); //write to client - commit successfully stored in server side
             }   
 
         }
     }while(currentINode!=NULL); //project doesn't exist
+    write(socket,"0", 1); //write to client - project does not exist
+}
 
+int searchforCommit(char* path){
+    DIR *cwd = opendir(path);
+    if(cwd == NULL){
+        possibleError(socket,"ERROR on opening directory");
+        return;
+    }
+
+    struct dirent *currentINode = NULL;
+    do{
+        currentINode = readdir(cwd);
+        if(currentINode!=NULL && currentINode->d_type != DT_DIR){
+            if(strlen(currentINode->d_name)>7 && strncmp(currentINode->d_name,".Commit",7)==0){
+                printf("Found a Commit File\n");
+
+                char *difference = malloc(36);
+                sprintf(difference, "diff %s .Commit > .Commit00", currentINode->d_name);
+                printf("SYSTEM CALL: %s\n", difference);
+                int status = system(difference);
+
+                char checkFile[10] = ".Commit00";
+                int clientFD = open(checkFile,O_RDONLY);
+                status = read(clientFD,difference,1);
+                if(status == 0){
+                    
+                }
+            }
+        }
+    }while(currentINode != NULL);
+}
+
+//TODO: push command for server side
+void push(char* projectName, int socket){
+    //Look for project and then take in commit and then look for the same commit file in the project
+    DIR *cwd = opendir("./");
+    if(cwd == NULL){
+        possibleError(socket,"ERROR on opening directory");
+        return;
+    }
+
+    struct dirent *currentINode = NULL;
+    do{
+        currentINode = readdir(cwd);
+        if(currentINode!=NULL && currentINode->d_type == DT_DIR){
+            if (strcmp(currentINode->d_name, ".") == 0 || strcmp(currentINode->d_name, "..") == 0)
+                    continue;
+
+            if(strcmp(currentINode->d_name,projectName)==0){
+                write(socket,"1", 1); //write to client project found
+
+                char commit[8] = ".Commit";
+                int commitFD = open(commit, O_CREAT, 00777);
+                
+                commitFD = open(commit, O_RDWR);
+                char s[2];
+                char buffer[256];
+                int totalBytes = 0, bytesRead = 0;
+                do{
+                    bzero(s,2);
+                    read(socket,s,1);
+                    if(buffer[0] != ' ')
+                        strcat(buffer,s);
+                }while(buffer[0] != ' ');
+
+                printf("SIZE OF COMMIT FILE: %s\n", buffer);
+
+                totalBytes = atoi(buffer);
+
+                printf("TOTALBYTES: %d\n", totalBytes);
+                int bytesToRead = 0;
+                //write out commit file from client
+                while(bytesRead<totalBytes){
+                    bytesToRead = (totalBytes-bytesRead<256)? totalBytes-bytesRead : 255;
+                    bzero(buffer,256);
+                    bytesRead += read(socket, buffer, bytesToRead);
+                    printf("BUFFER READ: %s\n",buffer);
+                    write(commitFD,buffer,bytesToRead);
+                }
+                
+                //Grab project path and pass to helper method to find commit file
+                char* path = malloc(strlen(projectName)+3);
+                if(path == NULL){
+                    possibleError(socket,"ERROR on malloc");
+                    return;
+                }
+                path[0] = '.';
+                path[1] = '/';
+                strcat(path,projectName);
+                
+                searchforCommit(path);
+
+            }
+        }
+    }while(currentINode!=NULL); //project doesn't exist
 }
 
 //Handles communication between the server and client socket
@@ -181,6 +457,8 @@ void* clientServerInteract(void* socket_arg){
         checkout(projectName, socket);
     }else if(command == 3){ //Commit
         commit(projectName,socket);
+    }else if(command == 4){ //Push
+        
     }else if(command == 5){ //Create 
         create(projectName, socket);
     }else if(command == 6){ //Delete 
