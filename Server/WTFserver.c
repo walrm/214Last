@@ -275,12 +275,12 @@ void commit(char* projectName, int socket){
                 read(socket,status,1); //status of commit from client
 
                 //Read in commit file if success on client side
-                char commit[20];
-                sprintf(commit, ".Commit%d", i);
+                char *commit = malloc(strlen(projectName)+13);
+                sprintf(commit, "./%s/.Commit%d", i, projectName);
                 int commitFD = open(commit, O_CREAT, 00777);
                 while(commitFD == -1){
                     i++;
-                    sprintf(commit, ".Commit%d", i);
+                    sprintf(commit, "./%s/.Commit%d", i, projectName);
                     commitFD = open(commit, O_CREAT, 00777);
                 }
                 
@@ -319,6 +319,7 @@ void commit(char* projectName, int socket){
     write(socket,"0", 1); //write to client - project does not exist
 }
 
+//Search for matching commit file in the project, 
 int searchforCommit(char* path){
     DIR *cwd = opendir(path);
     if(cwd == NULL){
@@ -330,23 +331,27 @@ int searchforCommit(char* path){
     do{
         currentINode = readdir(cwd);
         if(currentINode!=NULL && currentINode->d_type != DT_DIR){
-            if(strlen(currentINode->d_name)>7 && strncmp(currentINode->d_name,".Commit",7)==0){
+            if(strlen(currentINode->d_name)>7 && strncmp(currentINode->d_name,".Commit",7)==0 && strcmp(currentINode->d_name,".Commit00")!=0){
                 printf("Found a Commit File\n");
 
                 char *difference = malloc(36);
-                sprintf(difference, "diff %s .Commit > .Commit00", currentINode->d_name);
+                sprintf(difference, "diff %s %s/.Commit > %s/.Commit00", currentINode->d_name,path,path);
                 printf("SYSTEM CALL: %s\n", difference);
                 int status = system(difference);
+                
+                char* checkFile = malloc(11 + strlen(path));
+                strcat(checkFile,path);
+                strcat(checkFile,"/.Commit00");
 
-                char checkFile[10] = ".Commit00";
                 int clientFD = open(checkFile,O_RDONLY);
                 status = read(clientFD,difference,1);
                 if(status == 0){
-                    
+                    printf("THIS IS THE FILE!\n");
                 }
             }
         }
     }while(currentINode != NULL);
+    return 0;
 }
 
 //TODO: push command for server side
@@ -453,19 +458,20 @@ void* clientServerInteract(void* socket_arg){
         printf("Project Name: %s\n", projectName);
     }
 
-    if(command == 0){ //Checkout 
-        checkout(projectName, socket);
-    }else if(command == 3){ //Commit
-        commit(projectName,socket);
-    }else if(command == 4){ //Push
+    searchforCommit("./test");
+    // if(command == 0){ //Checkout 
+    //     checkout(projectName, socket);
+    // }else if(command == 3){ //Commit
+    //     commit(projectName,socket);
+    // }else if(command == 4){ //Push
         
-    }else if(command == 5){ //Create 
-        create(projectName, socket);
-    }else if(command == 6){ //Delete 
-        delete(projectName, socket);
-    }else if(command == 7){ //CurrentVersion
-        currentVersion(projectName,socket);
-    }
+    // }else if(command == 5){ //Create 
+    //     create(projectName, socket);
+    // }else if(command == 6){ //Delete 
+    //     delete(projectName, socket);
+    // }else if(command == 7){ //CurrentVersion
+    //     currentVersion(projectName,socket);
+    // }
     free(projectName);
     pthread_mutex_unlock(&lock);
 }
