@@ -54,6 +54,18 @@ char *itoa(int num)
     return str;
 }
 
+char *addByteToString(char *str, char *byte)
+{
+    char *temp = calloc(strlen(str) + strlen(byte) + 1, 1);
+    strcat(temp, str);
+    strcat(temp, byte);
+    temp[strlen(temp)] = '\0';
+    free(str);
+    str = calloc(strlen(temp) + 1, 1);
+    strcpy(str, temp);
+    free(temp);
+    return str;
+}
 char *computeLiveHash(Node *ptr, char *projectName)
 {
     unsigned char result[MD5_DIGEST_LENGTH];
@@ -84,7 +96,7 @@ Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int is
     Manifest *man = (Manifest *)malloc(sizeof(Manifest));
     int bytesRead = 0;
     char *s = calloc(2, 1);
-    char *clientProjectVersionS = malloc(10);
+    char *clientProjectVersionS = calloc(10,1);
     s[0] = 'a';
     s[1] = '\0';
     while (s[0] != '\n')
@@ -104,8 +116,17 @@ Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int is
     int readingCodeB1 = 0;
     int readingHash = 0;
     int readingVersion = 0;
+    int boolean = 0;
     man->files = malloc(sizeof(Node));
     Node *ptr = man->files;
+    if (bytesRead >= totalBytes)
+    {
+        free(ptr);
+        ptr = NULL;
+        man->files = NULL;
+        boolean = 1;
+        printf("here\n");
+    }
     while (bytesRead < totalBytes)
     {
         //printf("BytesRead:%d\nBytesTotal:%d\n",bytesRead,totalBytes);
@@ -228,9 +249,10 @@ Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int is
                 {
                     ptr->liveHash = computeLiveHash(ptr, projectName);
                 }
-                else{
-                    ptr->liveHash=calloc(strlen(ptr->hash)+1,1);
-                    strcpy(ptr->liveHash,ptr->hash);
+                else
+                {
+                    ptr->liveHash = calloc(strlen(ptr->hash) + 1, 1);
+                    strcpy(ptr->liveHash, ptr->hash);
                 }
                 if (strcmp(ptr->liveHash, ptr->hash) != 0)
                 {
@@ -253,13 +275,39 @@ Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int is
             }
         }
     }
-    ptr->next = NULL;
+    if (!boolean)
+    {
+        free(ptr->next);
+        ptr->next = NULL;
+    }
+    free(name);
+    free(clientProjectVersionS);
+    free(s);
+    free(gettingTotalBytes);
     return man;
+}
+void freeFileStruct(Node *head)
+{
+    if (head == NULL)
+    {
+        return;
+    }
+    if (head->next != NULL)
+    {
+        freeFileStruct(head->next);
+    }
+    free(head->fileName);
+    free(head->hash);
+    free(head->liveHash);
+    free(head);
+    head = NULL;
 }
 void freeManifestStruct(Manifest *man)
 {
+    if (man->files != NULL)
+        freeFileStruct(man->files);
+    free(man);
 }
-
 int min(int a, int b)
 {
     if (a > b)
@@ -990,7 +1038,6 @@ void sendFile(int fileFD, int socketFD)
 {
     int fileSize = getFileSize(fileFD);
     char *fileSizeS = itoa(fileSize);
-    printf("Size of File%s\n", fileSizeS);
     write(socketFD, fileSizeS, strlen(fileSizeS));
     write(socketFD, " ", 1);
     free(fileSizeS);
@@ -1005,11 +1052,11 @@ void sendFile(int fileFD, int socketFD)
     }
     close(fileFD);
 }
+
 /**
  * A useful description
  * 
  */
-//HAVE TO PRINT OUT THE COMMIT FILE
 void commit(char *projectName)
 {
     //Makes sure the directory exists on the clients side
@@ -1070,14 +1117,14 @@ void commit(char *projectName)
     }
 
     //Get client manifest and manifest version
-    char *clientManifest = malloc(strlen(projectName) + strlen("/.Manifest") + 1);
+    char *clientManifest = calloc(strlen(projectName) + strlen("/.Manifest") + 1, 1);
     strcat(clientManifest, projectName);
     strcat(clientManifest, "/.Manifest");
     int clientManifestFD = open(clientManifest, O_RDWR, 00777);
     off_t currentPos = lseek(clientManifestFD, (size_t)0, SEEK_CUR);
     off_t clientManifestSize = lseek(clientManifestFD, (size_t)0, SEEK_END);
     lseek(clientManifestFD, (size_t)0, SEEK_SET);
-    Manifest *clientMan = createManifestStruct(clientManifestFD, clientManifestSize, projectName,1);
+    Manifest *clientMan = createManifestStruct(clientManifestFD, clientManifestSize, projectName, 1);
     free(clientManifest);
     char *serverManifestRead = calloc(2, 1);
     serverManifestRead[1] = '\0';
@@ -1090,10 +1137,10 @@ void commit(char *projectName)
             strcat(serverManifestSizeS, serverManifestRead);
         }
     }
-    printf("here\n");
-    printf("Create manifest fileSize:%d\n", clientManifestSize);
     int serverManifestSize = atoi(serverManifestSizeS);
-    Manifest *serverMan = createManifestStruct(socketFD, serverManifestSize, projectName,1);
+    free(serverManifestSizeS);
+    free(serverManifestRead);
+    Manifest *serverMan = createManifestStruct(socketFD, serverManifestSize, projectName, 0);
     //Makes sure the manifest versions match
     if (serverMan->manifestVersion != clientMan->manifestVersion)
     {
@@ -1112,19 +1159,24 @@ void commit(char *projectName)
     //Creates the client file on the server side
     while (clientPtr != NULL)
     {
+        printf("%s\n", clientPtr->fileName);
         if (clientPtr != 0)
         {
             switch (clientPtr->code)
             {
             case 1:
                 write(commitFD, "A", 1);
+                printf("A%s\n", clientPtr->fileName);
                 break;
             case 2:
                 write(commitFD, "M", 1);
+                printf("M%s\n", clientPtr->fileName);
+
                 clientPtr->version++;
                 break;
             case 3:
                 write(commitFD, "D", 1);
+                printf("D%s\n", clientPtr->fileName);
                 break;
             default:
                 break;
@@ -1143,8 +1195,6 @@ void commit(char *projectName)
     }
     close(commitFD);
     commitFD = open(commitPath, O_RDONLY);
-    printf("Commit file path:%s\n", commitPath);
-    printf("here\n");
     sendFile(commitFD, socketFD);
     char *statusS = calloc(2, 1);
     read(socketFD, statusS, 1);
@@ -1159,8 +1209,9 @@ void commit(char *projectName)
         remove(commitPath);
     }
     free(commitPath);
-    //freeManifestStruct(clientMan);
-    //freeManifestStruct(serverMan);
+    free(statusS);
+    freeManifestStruct(clientMan);
+    freeManifestStruct(serverMan);
     closeConnection(socketFD);
     close(clientManifestFD);
 }
