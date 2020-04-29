@@ -231,12 +231,7 @@ void commit(char* projectName, int socket){
                 
                 char* manifestPath = malloc(strlen(projectName)+13);
                 bzero(manifestPath,sizeof(manifestPath));
-                manifestPath[0] = '.';
-                manifestPath[1] = '/';
-                strcat(manifestPath,projectName);
-                char m[10] = "/.Manifest";
-                strcat(manifestPath, m);
-                manifestPath[strlen(manifestPath)] = '\0';
+                sprintf(manifestPath,"./%s/.Manifest",projectName);
                 printf("MANIFEST PATH: %s\n", manifestPath);
                 int manifestFD = open(manifestPath, O_RDONLY); 
 
@@ -372,11 +367,11 @@ void push(char* projectName, int socket){
 
             if(strcmp(currentINode->d_name,projectName)==0){
                 write(socket,"1", 1); //write to client project found
-
-                char commit[8] = ".Commit";
-                int commitFD = open(commit, O_CREAT, 00777);
                 
-                commitFD = open(commit, O_RDWR);
+                char* commit = malloc(strlen(projectName)+11);
+                sprintf(commit, "./%s/.Commit",projectName);
+                int commitFD = open(commit, O_CREAT|O_RDWR, 00777);
+
                 char s[2];
                 char buffer[256];
                 int totalBytes = 0, bytesRead = 0;
@@ -408,10 +403,8 @@ void push(char* projectName, int socket){
                     possibleError(socket,"ERROR on malloc");
                     return;
                 }
-                path[0] = '.';
-                path[1] = '/';
-                strcat(path,projectName);
                 
+                sprintf(path,"./%s",projectName);
                 searchforCommit(path);
 
             }
@@ -458,13 +451,13 @@ void* clientServerInteract(void* socket_arg){
         printf("Project Name: %s\n", projectName);
     }
 
-    searchforCommit("./test");
+    push(projectName,socket);
     // if(command == 0){ //Checkout 
     //     checkout(projectName, socket);
     // }else if(command == 3){ //Commit
     //     commit(projectName,socket);
     // }else if(command == 4){ //Push
-        
+    //     push(projectName, socket);
     // }else if(command == 5){ //Create 
     //     create(projectName, socket);
     // }else if(command == 6){ //Delete 
