@@ -13,9 +13,9 @@
 #include <dirent.h>
 #include <errno.h>
 /**
- * $M-File is changed
- * $R-File is deleted
- * $A-File is added
+ * $M-File is changed 2
+ * $R-File is deleted 3
+ * $A-File is added 1
  * 0-Create
  * 
  */
@@ -59,6 +59,7 @@ char *itoa(int num)
     sprintf(str, "%d", num);
     return str;
 }
+
 /**Adds the given byte to the end of the string
  * by freeing and reallocating memory to the string
  * 
@@ -80,8 +81,6 @@ char *addByteToString(char *str, char *byte)
 }
 
 /*Gets the live hash of a file given the Node* for the file from the manifest
- * 
- * 
  * 
  */
 char *computeLiveHash(Node *ptr, char *projectName)
@@ -112,27 +111,39 @@ char *computeLiveHash(Node *ptr, char *projectName)
  * the total bytes to read
  * the name of the project of the manifest file
  * and whether the manifest file is on the client side or the server side
- * 
- * Returns the manifest file, with each file being held in a Node*
+ * @param fd the file descriptor to read from
+ * @param totalBytes the total bytes to read from the fileDescriptor
+ * @param projectName the name of the project that the commit/manifest file is for
+ * @param isLocal 1 if the project is local, 0 otherwise
+ * @param isManifestFile 1 if it is from a manifest file, 0 otherwise
+ * @return the manifest file, with each file being held in a Node*
  */
-Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int isClientSide)
+Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int isLocal, int isManifestFile)
 {
     printf("Creating Manifest Struct\n");
     Manifest *man = (Manifest *)malloc(sizeof(Manifest));
     int bytesRead = 0;
     char *s = calloc(2, 1);
-    char *clientProjectVersionS = calloc(10,1);
+    char *clientProjectVersionS = calloc(10, 1);
     s[0] = 'a';
     s[1] = '\0';
-    while (s[0] != '\n')
+    if (isManifestFile)
     {
-        bytesRead += read(fd, s, 1);
-        if (s[0] != '\n')
+        while (s[0] != '\n')
         {
-            strcat(clientProjectVersionS, s);
+            bytesRead += read(fd, s, 1);
+            if (s[0] != '\n')
+            {
+                strcat(clientProjectVersionS, s);
+            }
         }
+        man->manifestVersion = atoi(clientProjectVersionS);
     }
-    man->manifestVersion = atoi(clientProjectVersionS);
+    else
+    {
+        man->manifestVersion = -1;
+    }
+
     char *gettingTotalBytes = calloc(2, 1);
     gettingTotalBytes[1] = '\0';
     char *name = calloc(1, 1);
@@ -174,12 +185,12 @@ Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int is
             }
             else
             {
-                name=addByteToString(name,gettingTotalBytes);
+                name = addByteToString(name, gettingTotalBytes);
             }
         }
         else if (readingCodeB1) //reading the first byte of code/version
         {
-            name=addByteToString(name,gettingTotalBytes);
+            name = addByteToString(name, gettingTotalBytes);
             if (gettingTotalBytes[0] == '$')
             {
                 readingCode = 1;
@@ -215,7 +226,7 @@ Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int is
             }
             else
             {
-                name=addByteToString(name,gettingTotalBytes);
+                name = addByteToString(name, gettingTotalBytes);
             }
         }
         else if (readingVersion) //reading the version
@@ -231,7 +242,7 @@ Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int is
             }
             else
             {
-                name=addByteToString(name,gettingTotalBytes);
+                name = addByteToString(name, gettingTotalBytes);
             }
         }
         else if (readingHash) //reading the hash
@@ -242,7 +253,7 @@ Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int is
                 readingHash = 0;
                 ptr->hash = calloc(strlen(name) + 1, 1);
                 strcpy(ptr->hash, name);
-                if (isClientSide && ptr->code != 3)
+                if (isLocal && ptr->code != 3)
                 {
                     ptr->liveHash = computeLiveHash(ptr, projectName);
                 }
@@ -261,7 +272,7 @@ Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int is
             }
             else
             {
-                name=addByteToString(name,gettingTotalBytes);
+                name = addByteToString(name, gettingTotalBytes);
             }
         }
     }
@@ -276,6 +287,7 @@ Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int is
     free(gettingTotalBytes);
     return man;
 }
+
 void freeFileStruct(Node *head)
 {
     if (head == NULL)
@@ -322,7 +334,7 @@ int checkConnection()
         return -1;
     }
     int configFD = open(".configure", O_RDONLY);
-    int size=getFileSize(configFD);
+    int size = getFileSize(configFD);
     char *fileInfo = (char *)malloc(size + 1);
     read(configFD, fileInfo, size);
     char *space = strchr(fileInfo, ' ');
@@ -634,7 +646,6 @@ void currentVersion(char *projectName)
 /**
  *  Takes in a project name and a file name and adds it to the manifest
  */
-
 void add(char *projectName, char *fileName)
 {
     DIR *dir = opendir(projectName);
@@ -744,6 +755,7 @@ void add(char *projectName, char *fileName)
     free(result);
     free(manifestPath);
 }
+
 /**
  * Writes a message in the .Manifest to delete a file. 
  * If it does not exist in the .manifest, will print an error. 
@@ -859,9 +871,10 @@ int closeConnection(int serverFD)
     printf("Connection closed \n");
 }
 /**
- * Helper method to get the total bytes to read for a file.
- * @Param socketFD the fileDescriptor for the socket
- * Returns the number of bytes read for the file size
+ * Helper method to get the total bytes to read for a file from the server
+ * Reads until it finds a space, and then converts the char* to an int
+ * @param socketFD the fileDescriptor for the socket
+ * Returns the number of bytes for the file
  */
 int getTotalBytes(int socketFD)
 {
@@ -911,7 +924,9 @@ char *getFileName(int socketFD)
 }
 /**
  * Helper method to make the file in the client while getting the data from the server
- * @Param socketFD: Socket file descriptor, Filename: Filename to create, totalByts: Total bytes to read
+ * @param socketFD Socket file descriptor 
+ * @param filename Filename to create, 
+ * @param totalBytes Total bytes to read
  * DOES NOT free the filename inside this method
  */
 void makeFile(int socketFD, char *fileName, int totalBytes)
@@ -931,6 +946,7 @@ void makeFile(int socketFD, char *fileName, int totalBytes)
     }
     close(fileFD);
 }
+
 /**
  * Gets a project from the server, with all the files, and creates the project repository on the client's pc
  */
@@ -1109,8 +1125,8 @@ void commit(char *projectName)
     strcat(clientManifest, projectName);
     strcat(clientManifest, "/.Manifest");
     int clientManifestFD = open(clientManifest, O_RDWR, 00777);
-    int clientManifestSize=getFileSize(clientManifestFD);
-    Manifest *clientMan = createManifestStruct(clientManifestFD, clientManifestSize, projectName, 1);
+    int clientManifestSize = getFileSize(clientManifestFD);
+    Manifest *clientMan = createManifestStruct(clientManifestFD, clientManifestSize, projectName, 1, 1);
     free(clientManifest);
     char *serverManifestRead = calloc(2, 1);
     serverManifestRead[1] = '\0';
@@ -1126,7 +1142,7 @@ void commit(char *projectName)
     int serverManifestSize = atoi(serverManifestSizeS);
     free(serverManifestSizeS);
     free(serverManifestRead);
-    Manifest *serverMan = createManifestStruct(socketFD, serverManifestSize, projectName, 0);
+    Manifest *serverMan = createManifestStruct(socketFD, serverManifestSize, projectName, 0, 1);
     //Makes sure the manifest versions match
     if (serverMan->manifestVersion != clientMan->manifestVersion)
     {
@@ -1148,27 +1164,27 @@ void commit(char *projectName)
         printf("%s\n", clientPtr->fileName);
         if (clientPtr != 0)
         {
+            write(commitFD, clientPtr->fileName, strlen(clientPtr->fileName));
+            write(commitFD, " ", 1);
+
             switch (clientPtr->code)
             {
             case 1:
-                write(commitFD, "A", 1);
+                write(commitFD, "$A ", 3);
                 printf("A%s\n", clientPtr->fileName);
                 break;
             case 2:
-                write(commitFD, "M", 1);
+                write(commitFD, "$M ", 3);
                 printf("M%s\n", clientPtr->fileName);
-
                 clientPtr->version++;
                 break;
             case 3:
-                write(commitFD, "D", 1);
+                write(commitFD, "$D ", 3);
                 printf("D%s\n", clientPtr->fileName);
                 break;
             default:
                 break;
             }
-            write(commitFD, clientPtr->fileName, strlen(clientPtr->fileName));
-            write(commitFD, " ", 1);
             char *version = itoa(clientPtr->version);
             write(commitFD, version, strlen(version));
             free(version);
@@ -1247,24 +1263,63 @@ void push(char *projectName)
         free(response1C);
         return;
     }
-    //Making sure the project on the server has a commit file
     free(response1C);
+    //Sends the commit file to the server
+    int commitFD = open(commitFilePath, O_RDONLY);
+    sendFile(commitFD, socketFD);
+
+    //Server sends whether there is a matching commit file or not
     response1C = calloc(2, 1);
     response1C[1] = '\0';
     read(socketFD, response1C, 1);
     int commitExistsOnServer = atoi(response1C);
     if (!commitExistsOnServer)
     {
-        printf("There is no commit file for the given project in the server\n");
+        printf("No commit file on the server matches the local commit file. Please commit again\n");
         closeConnection(socketFD);
         free(response1C);
         return;
     }
     free(response1C);
-    //Sends the commit file to the server
-    int commitFD = open(commitFilePath, O_RDONLY);
-    sendFile(commitFD, socketFD);
+    //Creates the file struct from the commit file
+    close(commitFD);
+    commitFD = open(commitFilePath, O_RDONLY, 00777);
+    int commitSize = getFileSize(commitFD);
+    Manifest *commitMan = createManifestStruct(commitFD, commitSize, projectName, 0, 0);
+    Node *ptr = commitMan->files;
+    
+    //Creates the system command to tar the files given the list of files that are changed/added
+    char *name = calloc(strlen("tar -czvf archive.tar.gz ")+1, 1);
+    strcat(name,"tar -czvf archive.tar.gz ");
+    while (ptr != NULL)
+    {
+        if (ptr->code!=3){
+            addByteToString(name,"./");
+            addByteToString(name,projectName);
+            addByteToString(name,"/");
+            addByteToString(name,ptr->fileName);
+            addByteToString(name," ");
+        }
+        ptr=ptr->next;
+    }
+    int x=system(name);
+    //sends the tarred file to the server
+    int tarFD=open("archive.tar.gz",O_RDONLY,00777);
+    sendFile(tarFD,socketFD);
+    close(tarFD);
+    remove("archive.tar.gz");//deletes the tarred file
+    //updates the manifest
+    char* manifestPath=calloc(strlen("/.Manifest")+strlen(projectName)+1,1);
+    strcat(manifestPath,projectName);
+    strcat(manifestPath,"/.Manifest");
+    remove(manifestPath);
+    int manifestSize=getTotalBytes(socketFD);
+    makeFile(socketFD,manifestPath,manifestSize);
+    int manifestFD=open(manifestPath,O_CREAT,O_RDWR,00777);
+    //HAVE TO DELETE .COMMIT FILE HERE
+    closeConnection(socketFD);
 }
+
 int main(int argc, char *argv[])
 {
     if (argc == 1 || argc == 2)
