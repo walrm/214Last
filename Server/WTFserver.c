@@ -564,8 +564,9 @@ int searchforCommit(char *path, int socket)
                             strcpy(newFile->fileName, commitptr->fileName);
                             strcpy(newFile->hash, commitptr->hash);
                             newFile->code = 0;
-                            newFile->version=0;
-                            Node *temp = manptr->next;
+                            newFile->version = 0;
+
+                            Node* temp = manptr->next;
                             manptr->next = newFile;
                             manptr->next->next = temp;
                         }
@@ -609,6 +610,32 @@ int searchforCommit(char *path, int socket)
                         manptr = manptr->next;
                     }
 
+                    manifestFD = open(manifestFile, O_RDONLY);
+                    if(stat(manifestFile,&manStats)<0){
+                        possibleError(socket,"ERROR reading manifest stats");
+                        return;
+                    }
+
+                    int size = manStats.st_size; 
+                    bytesRead = 0, bytesToRead = 0;
+                    char manBuffer[256];
+                    
+                    //Send size of manifest file to client
+                    sprintf(manBuffer,"%d", size);
+                    write(socket,manBuffer,strlen(manBuffer));
+                    write(socket," ",1);
+                    printf("manBuffer: %s\n",manBuffer);
+                    printf("manBuffer size: %d\n", strlen(manBuffer));
+
+                    //Send manifest bytes to client
+                    while(size > bytesRead){
+                        bytesToRead = (size-bytesRead<256)? size-bytesRead : 255;
+                        bzero(manBuffer,256);
+                        bytesRead += read(manifestFD,manBuffer,bytesToRead);
+                        printf("MANBUFFER:\n%s\n", manBuffer);
+                        write(socket,manBuffer,bytesToRead);
+                    }
+                    
                     //free the two structs
                     close(manifestFD);
                     free(manVersion);
