@@ -507,7 +507,7 @@ int searchforCommit(char *path, int socket)
 
                     //Write all files the client sent to project
                     int untarStatus = system("tar -xzf archive.tar.gz"); //untar the file
-
+                    untarStatus = system("rm archive.tar.gz"); //remove the tar file
                     expireCommits(path); //Expire all other commits
 
                     //-------------------------------------------------------------------------------------------------
@@ -582,6 +582,10 @@ int searchforCommit(char *path, int socket)
                         commitptr = commitptr->next;
                         manptr = man->files;
                     }
+
+                    char* removeCommit = malloc(strlen(path)+12);
+                    sprintf(removeCommit, "rm %s/.Commit",path);
+                    int rmCommit = system(removeCommit); 
 
                     //Update manifest file through the manifest structure
                     close(manifestFD);
