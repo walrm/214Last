@@ -306,7 +306,7 @@ void sendFileInformation(char* path, int socket){
             write(socket," ",1);
 
             sendFileInformation(nextPath, socket);
-        }else{
+        }else if(strncmp(currentINode->d_name,".Commit",7)!=0){
             write(socket, "4", 1); //server letting client know it is sending file
 
             char* filePath = malloc(strlen(path)+strlen(currentINode->d_name)+2);

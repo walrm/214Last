@@ -11,6 +11,8 @@
 #include <fcntl.h>
 #include <signal.h>
 
+#include <openssl/md5.h>
+
 #include "serverFunctions.h"
 
 int socketfd, newsocketfd;
@@ -19,6 +21,7 @@ typedef struct _node
 {
     char *fileName;
     char *hash;
+    char* liveHash;
     int code; //0:Nothing,1:Add,2:Modify,3:Delete
     int version;
     struct _node *next;
@@ -44,23 +47,92 @@ void stopServer(int sigNum){
     exit(0);
 }
 
-Manifest *createManifestStruct(int fd, int totalBytes)
+/**Adds the given byte to the end of the string
+ * by freeing and reallocating memory to the string
+ * 
+ * @param str: the string to add the byte to. Must have allocated memory
+ * @param byte: the byte to add at the end of the string
+ * @return the concatenated string
+ */
+char *addByteToString(char *str, char *byte)
 {
+    char *temp = calloc(strlen(str) + strlen(byte) + 1, 1);
+    strcat(temp, str);
+    strcat(temp, byte);
+    temp[strlen(temp)] = '\0';
+    free(str);
+    str = calloc(strlen(temp) + 1, 1);
+    strcpy(str, temp);
+    free(temp);
+    return str;
+}
+
+/*Gets the live hash of a file given the Node* for the file from the manifest
+ * 
+ */
+char *computeLiveHash(Node *ptr, char *projectName)
+{
+    return "";
+    // unsigned char result[MD5_DIGEST_LENGTH];
+    // char *filePath = calloc(strlen(projectName) + strlen(ptr->fileName) + 2, 1);
+    // strcat(filePath, projectName);
+    // strcat(filePath, "/");
+    // strcat(filePath, ptr->fileName);
+    // int fd = open(filePath, O_RDWR, 00777);
+    // int fileSize = getFileSize(fd);
+    // char *file_buffer = calloc(fileSize + 1, 1);
+    // read(fd, file_buffer, fileSize);
+    // MD5(file_buffer, fileSize, result);
+    // int i = 0;
+    // char *str = calloc(33, 1);
+    // for (i = 0; i < MD5_DIGEST_LENGTH; i++)
+    // {
+    //     sprintf(&str[i * 2], "%02x", (unsigned int)result[i]);
+    // }
+    // close(fd);
+    // free(file_buffer);
+    // free(filePath);
+    // return str;
+}
+
+/**
+ * Creates a manifest struct given the fileDescriptor to read from that starts with the first byte of the manifest file,
+ * the total bytes to read
+ * the name of the project of the manifest file
+ * and whether the manifest file is on the client side or the server side
+ * @param fd the file descriptor to read from
+ * @param totalBytes the total bytes to read from the fileDescriptor
+ * @param projectName the name of the project that the commit/manifest file is for
+ * @param isClientSide 1 if the project is local, 0 otherwise
+ * @param isManifestFile 1 if it is from a manifest file, 0 otherwise
+ * @return the manifest file, with each file being held in a Node*
+ */
+Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int isLocal, int isManifestFile)
+{
+    printf("Creating Manifest Struct\n");
     Manifest *man = (Manifest *)malloc(sizeof(Manifest));
     int bytesRead = 0;
-    char *s = calloc(2,1);
-    char *clientProjectVersionS = malloc(10);
-    s[0]='a';
-    s[1]='\0';
-    while (s[0] != '\n')
+    char *s = calloc(2, 1);
+    char *clientProjectVersionS = calloc(10, 1);
+    s[0] = 'a';
+    s[1] = '\0';
+    if (isManifestFile)
     {
-        bytesRead += read(fd, s, 1);
-        if (s[0] != '\n')
+        while (s[0] != '\n')
         {
-            strcat(clientProjectVersionS, s);
+            bytesRead += read(fd, s, 1);
+            if (s[0] != '\n')
+            {
+                strcat(clientProjectVersionS, s);
+            }
         }
+        man->manifestVersion = atoi(clientProjectVersionS);
     }
-    man->manifestVersion = atoi(clientProjectVersionS);
+    else
+    {
+        man->manifestVersion = -1;
+    }
+
     char *gettingTotalBytes = calloc(2, 1);
     gettingTotalBytes[1] = '\0';
     char *name = calloc(1, 1);
@@ -69,17 +141,30 @@ Manifest *createManifestStruct(int fd, int totalBytes)
     int readingCodeB1 = 0;
     int readingHash = 0;
     int readingVersion = 0;
+    int boolean = 0;
     man->files = malloc(sizeof(Node));
     Node *ptr = man->files;
+    if (bytesRead >= totalBytes)
+    {
+        free(ptr);
+        ptr = NULL;
+        man->files = NULL;
+        boolean = 1;
+        printf("here\n");
+    }
     while (bytesRead < totalBytes)
     {
         //printf("BytesRead:%d\nBytesTotal:%d\n",bytesRead,totalBytes);
+        if (gettingTotalBytes[0] == '\n')
+        {
+            ptr->next = (Node *)malloc(sizeof(Node));
+            ptr = ptr->next;
+        }
         bytesRead += read(fd, gettingTotalBytes, 1);
         if (readingName) //reading the name of the file
         {
             if (gettingTotalBytes[0] == ' ')
             {
-                printf("Filename:%s\n",name);
                 readingName = 0;
                 readingCodeB1 = 1;
                 ptr->fileName = malloc(strlen(name));
@@ -89,26 +174,12 @@ Manifest *createManifestStruct(int fd, int totalBytes)
             }
             else
             {
-                char *temp = calloc(strlen(name) + strlen(gettingTotalBytes) + 1,1);
-                strcat(temp, name);
-                strcat(temp, gettingTotalBytes);
-                temp[strlen(temp)] = '\0';
-                free(name);
-                name = calloc(strlen(temp), 1);
-                strcpy(name, temp);
-                free(temp);
+                name = addByteToString(name, gettingTotalBytes);
             }
         }
         else if (readingCodeB1) //reading the first byte of code/version
         {
-            char *temp = calloc(strlen(name) + strlen(gettingTotalBytes) + 1,1);
-            strcat(temp, name);
-            strcat(temp, gettingTotalBytes);
-            temp[strlen(temp)] = '\0';
-            free(name);
-            name = calloc(strlen(temp) + 1, 1);
-            strcpy(name, temp);
-            free(temp);
+            name = addByteToString(name, gettingTotalBytes);
             if (gettingTotalBytes[0] == '$')
             {
                 readingCode = 1;
@@ -125,7 +196,6 @@ Manifest *createManifestStruct(int fd, int totalBytes)
         {
             if (gettingTotalBytes[0] == ' ')
             {
-                printf("CODE:%s\n",name);
                 if (strcmp(name, "$M") == 0)
                 { //Modify
                     ptr->code = 2;
@@ -145,22 +215,14 @@ Manifest *createManifestStruct(int fd, int totalBytes)
             }
             else
             {
-                char *temp = calloc(strlen(name) + strlen(gettingTotalBytes) + 1,1);
-                strcat(temp, name);
-                strcat(temp, gettingTotalBytes);
-                temp[strlen(temp)] = '\0';
-                free(name);
-                name = calloc(strlen(temp) + 1, 1);
-                strcpy(name, temp);
-                free(temp);
+                name = addByteToString(name, gettingTotalBytes);
             }
         }
         else if (readingVersion) //reading the version
         {
             if (gettingTotalBytes[0] == ' ')
             {
-                printf("Version:%s\n",name);
-
+                printf("Version:%s\n", name);
                 ptr->version = atoi(name);
                 free(name);
                 name = calloc(1, 1);
@@ -169,44 +231,49 @@ Manifest *createManifestStruct(int fd, int totalBytes)
             }
             else
             {
-                char *temp = calloc(strlen(name) + strlen(gettingTotalBytes) + 1,1);
-                strcat(temp, name);
-                strcat(temp, gettingTotalBytes);
-                temp[strlen(temp)] = '\0';
-                free(name);
-                name = calloc(strlen(temp) + 1, 1);
-                strcpy(name, temp);
-                free(temp);
+                name = addByteToString(name, gettingTotalBytes);
             }
         }
         else if (readingHash) //reading the hash
         {
             if (gettingTotalBytes[0] == '\n')
             {
-                printf("end of reading hash?\n");
                 readingName = 1;
                 readingHash = 0;
                 ptr->hash = calloc(strlen(name) + 1, 1);
-                strcpy(ptr->hash,name);
+                strcpy(ptr->hash, name);
+                if (isLocal && ptr->code != 3)
+                {
+                    ptr->liveHash = computeLiveHash(ptr, projectName);
+                }
+                else
+                {
+                    ptr->liveHash = calloc(strlen(ptr->hash) + 1, 1);
+                    strcpy(ptr->liveHash, ptr->hash);
+                }
+                if (strcmp(ptr->liveHash, ptr->hash) != 0)
+                {
+                    ptr->code = 2; //Modify
+                }
+
                 free(name);
-                name=calloc(1,1);
-                ptr->next = (Node*)malloc(sizeof(Node));
-                ptr = ptr->next;
+                name = calloc(1, 1);
             }
             else
             {
-                char *temp = calloc(strlen(name) + strlen(gettingTotalBytes) + 1,1);
-                strcat(temp, name);
-                strcat(temp, gettingTotalBytes);
-                temp[strlen(temp)] = '\0';
-                free(name);
-                name = calloc(strlen(temp) + 1, 1);
-                strcpy(name, temp);
-                free(temp);
+                name = addByteToString(name, gettingTotalBytes);
             }
         }
     }
-    free(ptr);
+    if (!boolean)
+    {
+        free(ptr->next);
+        ptr->next = NULL;
+    }
+    free(name);
+    free(clientProjectVersionS);
+    free(s);
+    free(gettingTotalBytes);
     return man;
 }
 
@@ -324,8 +391,35 @@ void commit(char* projectName, int socket){
     write(socket,"0", 1); //write to client - project does not exist
 }
 
+void expireCommits(char* path){
+    DIR *cwd = opendir(path);
+    if(cwd == NULL){
+        possibleError(socket,"ERROR on opening directory");
+        return;
+    }
+
+    struct dirent *currentINode = NULL;
+    do{
+        currentINode = readdir(cwd);
+        if(currentINode!=NULL && currentINode->d_type != DT_DIR){
+            if(strlen(currentINode->d_name)>7 && strncmp(currentINode->d_name,".Commit",7)==0){
+                char* commitFile = malloc(strlen(path)+strlen(currentINode->d_name)+2);
+                sprintf(commitFile,"%s/%s",path,currentINode->d_name);
+                
+                char* systemCall = malloc(strlen(commitFile)+4);
+                sprintf(systemCall, "rm %s",commitFile);
+                printf("REMOVE CALL: %s\n",systemCall);
+                int status = system(systemCall);
+
+                free(commitFile);
+                free(systemCall);
+            }
+        }
+    }while(currentINode!=NULL);
+}
+
 //Search for matching commit file in the project, 
-int searchforCommit(char* path){
+int searchforCommit(char* path, int socket){
     DIR *cwd = opendir(path);
     if(cwd == NULL){
         possibleError(socket,"ERROR on opening directory");
@@ -345,6 +439,7 @@ int searchforCommit(char* path){
                 int status = system(difference);
                 
                 char* checkFile = malloc(11 + strlen(path));
+                bzero(checkFile,sizeof(checkFile));
                 strcat(checkFile,path);
                 strcat(checkFile,"/.Commit00");
 
@@ -352,6 +447,119 @@ int searchforCommit(char* path){
                 status = read(clientFD,difference,1);
                 if(status == 0){
                     printf("THIS IS THE FILE!\n");
+                    write(socket,"1",1); //write to client - commit file found
+
+                    /*
+                    char s[2];
+                    char buffer[256];
+                    int totalBytes = 0, bytesRead = 0;
+                    do{
+                        bzero(s,2);
+                        read(socket,s,1);
+                        if(s[0] != ' ')
+                            strcat(buffer,s);
+                    }while(s[0] != ' ');
+
+                    totalBytes = atoi(buffer);
+                    printf("TOTALBYTES: %d\n", totalBytes);
+
+                    char tarFile[16] = "archive.tar.gz";
+                    int tarFD = open(tarFile, O_CREAT|O_RDWR, 00777);
+
+                    int bytesToRead = 0;
+                    //Accept files from client
+                    while(bytesRead<totalBytes){
+                        bytesToRead = (totalBytes-bytesRead<256)? totalBytes-bytesRead : 255;
+                        bzero(buffer,256);
+                        bytesRead += read(socket, buffer, bytesToRead);
+                        printf("BUFFER READ: %s\n",buffer);
+                        write(tarFD,buffer,bytesToRead);
+                    }
+                    
+                    //Write all files the client sent to project
+                    int untarStatus = system("tar -xzf archive.tar.gz"); //untar the file
+                    */
+                    expireCommits(path); //Expire all other commits
+                    
+                    //-------------------------------------------------------------------------------------------------
+
+                    //update project directory's .manifest replacing information from .commit, increase projects version
+                    char* commitFile = malloc(strlen(path)+9);
+                    sprintf(commitFile,"%s/.Commit", path);
+                    
+                    struct stat commitStats;
+                    if(stat(commitFile,&commitStats)<0){
+                        possibleError(socket,"ERROR reading manifest stats");
+                        return;
+                    }
+
+                    char* manifestFile = malloc(strlen(path)+11);
+                    sprintf(manifestFile, "%s/.Manifest", path);
+                    struct stat manStats;
+                    if(stat(manifestFile,&manStats)<0){
+                        possibleError(socket,"ERROR reading manifest stats");
+                        return;
+                    }
+
+                    int commitFD = open(commitFile, O_RDWR);
+                    int manifestFD = open(manifestFile, O_RDWR);
+                    int manifestSize = manStats.st_size; 
+                    int commitSize = commitStats.st_size; 
+                    Manifest* commit = createManifestStruct(commitFD,commitSize,"",0,0);
+                    Manifest* man = createManifestStruct(manifestFD,manifestSize,"",0,1);
+                    
+                    Node* commitptr = commit->files;
+                    Node* manptr = man->files;
+                    man->manifestVersion++;
+                    
+                    while(commitptr != NULL){
+                        if(commitptr->code == 3){
+                            //Remove file 
+                            while(strcmp(manptr->fileName, commitptr->fileName)!=0)
+                                manptr=manptr->next;
+                            manptr->fileName = "";
+                            char* systemCall = malloc(strlen(manptr->fileName)+4);
+                            sprintf(systemCall, "rm %s", manptr->fileName);
+                            int rmStatus = system(systemCall);
+                            free(systemCall);
+                        }else if(commitptr->code == 1){
+                            commitptr->code = 0;
+                            Node* temp = manptr->next;
+                            manptr->next = commitptr;
+                            manptr->next->next = temp;
+                        }else{
+                            //Update hash, code, version
+                            while(strcmp(manptr->fileName, commitptr->fileName)!=0)
+                                manptr=manptr->next;
+                            manptr->hash = commitptr->hash;
+                            manptr->code = 0;
+                            manptr->version++;
+                        }
+                        commitptr = commitptr->next;
+                        manptr = man->files;
+                    }
+                    
+                    //Update manifest file through the manifest structure
+                    manifestFD = open(manifestFile, O_RDWR);
+                    char* manVersion = malloc(sizeof(man->manifestVersion)/4+1);
+                    sprintf(manVersion, "%d\n", man->manifestVersion);
+                    printf("new man version and length: %s,%d\n", manVersion, strlen(manVersion));
+                    write(manifestFD, manVersion, strlen(manVersion));
+                    
+                    //Write out new manifest file
+                    while(manptr != NULL){
+                        if(strcmp(manptr->fileName,"")!=0){
+                            write(manifestFD, manptr->fileName, strlen(manptr->fileName));
+                            write(manifestFD," ",1);
+                            char* fileVersion = malloc(sizeof(manptr->version)/4+1);
+                            sprintf(fileVersion, "%d", manptr->version);
+                            write(manifestFD, fileVersion, strlen(fileVersion));
+                            write(manifestFD," ",1);
+                            write(manifestFD, manptr->hash, strlen(manptr->hash));
+                            write(manifestFD,"\n",1);
+                        }
+                    }
+
                 }
             }
         }
@@ -388,15 +596,13 @@ void push(char* projectName, int socket){
                 do{
                     bzero(s,2);
                     read(socket,s,1);
-                    if(buffer[0] != ' ')
+                    if(s[0] != ' ')
                         strcat(buffer,s);
-                }while(buffer[0] != ' ');
-
-                printf("SIZE OF COMMIT FILE: %s\n", buffer);
+                }while(s[0] != ' ');
 
                 totalBytes = atoi(buffer);
-
                 printf("TOTALBYTES: %d\n", totalBytes);
+
                 int bytesToRead = 0;
                 //write out commit file from client
                 while(bytesRead<totalBytes){
@@ -415,7 +621,7 @@ void push(char* projectName, int socket){
                 }
 
                 sprintf(path,"./%s",projectName);
-                searchforCommit(path);
+                searchforCommit(path,socket);
 
             }
         }
@@ -460,20 +666,21 @@ void* clientServerInteract(void* socket_arg){
         projectName[strlen(projectName)]='\0'; 
         printf("Project Name: %s\n", projectName);
     }
-
-    if(command == 0){ //Checkout 
-        checkout(projectName, socket);
-    }else if(command == 3){ //Commit
-        commit(projectName,socket);
-    }else if(command == 4){ //Push
-        push(projectName, socket);
-    }else if(command == 5){ //Create 
-        create(projectName, socket);
-    }else if(command == 6){ //Delete 
-        delete(projectName, socket);
-    }else if(command == 7){ //CurrentVersion
-        currentVersion(projectName,socket);
-    }
+    
+    searchforCommit("./kttest1",socket);
+    // if(command == 0){ //Checkout 
+    //     checkout(projectName, socket);
+    // }else if(command == 3){ //Commit
+    //     commit(projectName,socket);
+    // }else if(command == 4){ //Push
+    //     push(projectName, socket);
+    // }else if(command == 5){ //Create 
+    //     create(projectName, socket);
+    // }else if(command == 6){ //Delete 
+    //     delete(projectName, socket);
+    // }else if(command == 7){ //CurrentVersion
+    //     currentVersion(projectName,socket);
+    // }
     free(projectName);
     pthread_mutex_unlock(&lock);
 }
