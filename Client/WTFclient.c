@@ -233,7 +233,7 @@ Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int is
         {
             if (gettingTotalBytes[0] == ' ')
             {
-                printf("Version:%s\n", name);
+                //printf("Version:%s\n", name);
                 ptr->version = atoi(name);
                 free(name);
                 name = calloc(1, 1);
@@ -1042,8 +1042,10 @@ void sendFile(int fileFD, int socketFD)
 {
     int fileSize = getFileSize(fileFD);
     char *fileSizeS = itoa(fileSize);
+    printf("%s\n",fileSizeS);
+
+    fileSizeS=addByteToString(fileSizeS," ");
     write(socketFD, fileSizeS, strlen(fileSizeS));
-    write(socketFD, " ", 1);
     free(fileSizeS);
     int bytesSent = 0;
     while (fileSize > bytesSent)
@@ -1218,6 +1220,11 @@ void commit(char *projectName)
     close(clientManifestFD);
 }
 
+
+/**
+ * TODO delete the .Commit file after push sucessful
+ * 
+ */
 void push(char *projectName)
 {
     //Makes sure the project exists on the client
@@ -1232,11 +1239,13 @@ void push(char *projectName)
         return;
     }
     char *commitFilePath = calloc(strlen(projectName) + strlen("/.Commit") + 1, 1);
+    sprintf(commitFilePath,"%s/.Commit",projectName);
     //Makes sure the commit file exists on the client
     if (access(commitFilePath, F_OK) == -1)
     {
         //.Commit file does not exist for specified project
         printf("Commit file does not exist, commit before pushing");
+        return;
     }
     int socketFD = checkConnection();
     if (socketFD == -1)
@@ -1245,11 +1254,11 @@ void push(char *projectName)
     }
     //Sending the command and the project name
     char *command = calloc(strlen(projectName) + 2, 1);
-    strcat(command, "0");
+    strcat(command, "4");
     strcat(command, projectName);
     command[strlen(command)] = '\0';
     write(socketFD, command, strlen(command));
-    write(socketFD, " ", 1);
+    //write(socketFD, " ", 1);
     free(command);
     //Making sure the project exists on the server
     char *response1C = calloc(2, 1);
@@ -1286,6 +1295,7 @@ void push(char *projectName)
     commitFD = open(commitFilePath, O_RDONLY, 00777);
     int commitSize = getFileSize(commitFD);
     Manifest *commitMan = createManifestStruct(commitFD, commitSize, projectName, 0, 0);
+    printf("Created Manifest Struct\n");
     Node *ptr = commitMan->files;
     
     //Creates the system command to tar the files given the list of files that are changed/added
@@ -1294,11 +1304,11 @@ void push(char *projectName)
     while (ptr != NULL)
     {
         if (ptr->code!=3){
-            addByteToString(name,"./");
-            addByteToString(name,projectName);
-            addByteToString(name,"/");
-            addByteToString(name,ptr->fileName);
-            addByteToString(name," ");
+            name=addByteToString(name,"./");
+            name=addByteToString(name,projectName);
+            name=addByteToString(name,"/");
+            name=addByteToString(name,ptr->fileName);
+            name=addByteToString(name," ");
         }
         ptr=ptr->next;
     }
@@ -1345,6 +1355,7 @@ int main(int argc, char *argv[])
         }
         else if (strcmp("Push", argv[1]) == 0)
         {
+            push(argv[2]);
         }
         else if (strcmp("Create", argv[1]) == 0)
         {
