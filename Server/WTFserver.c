@@ -406,7 +406,7 @@ void expireCommits(char* path){
                 char* commitFile = malloc(strlen(path)+strlen(currentINode->d_name)+2);
                 sprintf(commitFile,"%s/%s",path,currentINode->d_name);
                 
-                char* systemCall = malloc(strlen(commitFile)+4);
+                char* systemCall = malloc(strlen(commitFile)+7);
                 sprintf(systemCall, "rm %s",commitFile);
                 printf("REMOVE CALL: %s\n",systemCall);
                 int status = system(systemCall);
@@ -433,23 +433,24 @@ int searchforCommit(char* path, int socket){
             if(strlen(currentINode->d_name)>7 && strncmp(currentINode->d_name,".Commit",7)==0 && strcmp(currentINode->d_name,".Commit00")!=0){
                 printf("Found a Commit File\n");
 
-                char *difference = malloc(36);
+                char *difference = calloc(strlen(path)*2+strlen(currentINode->d_name)+28,1);
                 sprintf(difference, "diff %s %s/.Commit > %s/.Commit00", currentINode->d_name,path,path);
                 printf("SYSTEM CALL: %s\n", difference);
                 int status = system(difference);
+                free(difference);
                 
                 char* checkFile = malloc(11 + strlen(path));
                 bzero(checkFile,sizeof(checkFile));
                 strcat(checkFile,path);
                 strcat(checkFile,"/.Commit00");
-
                 int clientFD = open(checkFile,O_RDONLY);
+                free(checkFile);
+
                 status = read(clientFD,difference,1);
                 if(status == 0){
                     printf("THIS IS THE FILE!\n");
                     write(socket,"1",1); //write to client - commit file found
 
-                    /*
                     char s[2];
                     char buffer[256];
                     int totalBytes = 0, bytesRead = 0;
@@ -475,10 +476,12 @@ int searchforCommit(char* path, int socket){
                         printf("BUFFER READ: %s\n",buffer);
                         write(tarFD,buffer,bytesToRead);
                     }
+
+                    close(tarFD);
                     
                     //Write all files the client sent to project
                     int untarStatus = system("tar -xzf archive.tar.gz"); //untar the file
-                    */
+                    
                     expireCommits(path); //Expire all other commits
                     
                     //-------------------------------------------------------------------------------------------------
@@ -518,14 +521,20 @@ int searchforCommit(char* path, int socket){
                             while(strcmp(manptr->fileName, commitptr->fileName)!=0)
                                 manptr=manptr->next;
                             manptr->fileName = "";
-                            char* systemCall = malloc(strlen(manptr->fileName)+4);
-                            sprintf(systemCall, "rm %s", manptr->fileName);
+                            char* systemCall = malloc(strlen(commitptr->fileName)+4);
+                            sprintf(systemCall, "rm %s", commitptr->fileName);
                             int rmStatus = system(systemCall);
                             free(systemCall);
-                        }else if(commitptr->code == 1){
-                            commitptr->code = 0;
+                        }else if(commitptr->code == 1){ //NEED TO TEST: add in commit
+                            Node* newFile = malloc(sizeof(Node));
+                            newFile->fileName = malloc(strlen(commitptr->fileName));
+                            newFile->hash = malloc(strlen(commitptr->hash));
+                            strcpy(newFile->fileName, commitptr->fileName);
+                            strcpy(newFile->hash, commitptr->hash);
+                            newFile->code = 0;
+                            
                             Node* temp = manptr->next;
-                            manptr->next = commitptr;
+                            manptr->next = newFile;
                             manptr->next->next = temp;
                         }else{
                             //Update hash, code, version
@@ -540,7 +549,8 @@ int searchforCommit(char* path, int socket){
                     }
                     
                     //Update manifest file through the manifest structure
-                    manifestFD = open(manifestFile, O_RDWR);
+                    remove(manifestFile);
+                    manifestFD = open(manifestFile, O_CREAT| O_RDWR, 00777);
                     char* manVersion = malloc(sizeof(man->manifestVersion)/4+1);
                     sprintf(manVersion, "%d\n", man->manifestVersion);
                     printf("new man version and length: %s,%d\n", manVersion, strlen(manVersion));
@@ -548,7 +558,7 @@ int searchforCommit(char* path, int socket){
                     
                     //Write out new manifest file
                     while(manptr != NULL){
-                        if(strcmp(manptr->fileName,"")!=0){
+                        if(strlen(manptr->fileName)!=0){
                             write(manifestFD, manptr->fileName, strlen(manptr->fileName));
                             write(manifestFD," ",1);
                             char* fileVersion = malloc(sizeof(manptr->version)/4+1);
@@ -557,9 +567,18 @@ int searchforCommit(char* path, int socket){
                             write(manifestFD," ",1);
                             write(manifestFD, manptr->hash, strlen(manptr->hash));
                             write(manifestFD,"\n",1);
+                            free(fileVersion);
                         }
+                        manptr = manptr->next;
                     }
 
+                    //free the two structs
+                    close(manifestFD);
+                    free(manVersion);
+                    close(commitFD);
+                    free(manifestFile);
+                    free(commitFile);
+                    return;
                 }
             }
         }
@@ -622,7 +641,8 @@ void push(char* projectName, int socket){
 
                 sprintf(path,"./%s",projectName);
                 searchforCommit(path,socket);
-
+                
+                return;
             }
         }
     }while(currentINode!=NULL); //project doesn't exist
@@ -667,20 +687,19 @@ void* clientServerInteract(void* socket_arg){
         printf("Project Name: %s\n", projectName);
     }
     
-    searchforCommit("./kttest1",socket);
-    // if(command == 0){ //Checkout 
-    //     checkout(projectName, socket);
-    // }else if(command == 3){ //Commit
-    //     commit(projectName,socket);
-    // }else if(command == 4){ //Push
-    //     push(projectName, socket);
-    // }else if(command == 5){ //Create 
-    //     create(projectName, socket);
-    // }else if(command == 6){ //Delete 
-    //     delete(projectName, socket);
-    // }else if(command == 7){ //CurrentVersion
-    //     currentVersion(projectName,socket);
-    // }
+    if(command == 0){ //Checkout 
+        checkout(projectName, socket);
+    }else if(command == 3){ //Commit
+        commit(projectName,socket);
+    }else if(command == 4){ //Push
+        push(projectName, socket);
+    }else if(command == 5){ //Create 
+        create(projectName, socket);
+    }else if(command == 6){ //Delete 
+        delete(projectName, socket);
+    }else if(command == 7){ //CurrentVersion
+        currentVersion(projectName,socket);
+    }
     free(projectName);
     pthread_mutex_unlock(&lock);
 }
