@@ -54,6 +54,7 @@ char *itoa(int num)
     int length = snprintf(NULL, 0, "%d", num);
     char *str = calloc(length + 1, 1);
     sprintf(str, "%d", num);
+    str[strlen(str)] = '\0';
     return str;
 }
 
@@ -309,7 +310,7 @@ void expireCommits(char *path)
                 char *commitFile = malloc(strlen(path) + strlen(currentINode->d_name) + 2);
                 sprintf(commitFile, "%s/%s", path, currentINode->d_name);
 
-                char *systemCall = malloc(strlen(commitFile) + 7);
+                char *systemCall = malloc(strlen(commitFile) + 4);
                 sprintf(systemCall, "rm %s", commitFile);
                 printf("REMOVE CALL: %s\n", systemCall);
                 int status = system(systemCall);
@@ -341,15 +342,15 @@ int searchforCommit(char *path, int socket){
                 sprintf(difference, "diff %s/%s %s/.Commit > %s/.Commit00", path, currentINode->d_name, path, path);
                 printf("SYSTEM CALL: %s\n", difference);
                 int status = system(difference);
-                free(difference);
 
                 char *checkFile = malloc(11 + strlen(path));
                 bzero(checkFile, sizeof(checkFile));
                 sprintf(checkFile, "%s/.Commit00", path);
                 int clientFD = open(checkFile, O_RDONLY);
-                free(checkFile);
-
+                
                 status = read(clientFD, difference, 1);
+                free(difference);
+                free(checkFile);
                 if (status == 0){
                     printf("THIS IS THE FILE!\n");
                     write(socket, "1", 1); //write to client - commit file found
@@ -382,7 +383,7 @@ int searchforCommit(char *path, int socket){
                     free(tarCall);
                     free(makeBackup);
 
-                    char s[2];
+                    char* s = malloc(2);
                     char buffer[256];
                     bzero(buffer,256);
                     int totalBytes = 0, bytesRead = 0;
@@ -396,7 +397,7 @@ int searchforCommit(char *path, int socket){
                     totalBytes = atoi(buffer);
                     printf("TOTALBYTES: %d\n", totalBytes);
 
-                    char tarFile[16] = "archive.tar.gz";
+                    char tarFile[15] = "archive.tar.gz";
                     int tarFD = open(tarFile, O_CREAT | O_RDWR, 00777);
 
                     int bytesToRead = 0;
@@ -409,7 +410,7 @@ int searchforCommit(char *path, int socket){
                         write(tarFD, buffer, bytesToRead);
                     }
                     close(tarFD);
-
+                    closedir(cwd);
                     free(manifestFile);
                     close(clientFD);
 
@@ -418,7 +419,6 @@ int searchforCommit(char *path, int socket){
                     untarStatus = system("rm archive.tar.gz"); //remove the tar file
 
                     expireCommits(path); //Expire all other commits
-
                     return;
                 }
 
@@ -458,9 +458,10 @@ void push(char *projectName, int socket){
                 int commitFD = open(commitFile, O_CREAT | O_RDWR, 00777);
                 free(commitFile);
 
-                char s[2];
+                char* s = malloc(2);
                 char buffer[256];
                 bzero(buffer,256);
+
                 int totalBytes = 0, bytesRead = 0;
                 printf("reading bytes\n");
                 do{
@@ -471,6 +472,8 @@ void push(char *projectName, int socket){
                         printf("%s\n", buffer);
                     }
                 } while (s[0] != ' ');
+                free(s);
+                buffer[strlen(buffer)] = '\0';
 
                 totalBytes = atoi(buffer);
                 printf("TOTALBYTES: %d\n", totalBytes);
@@ -485,6 +488,8 @@ void push(char *projectName, int socket){
                     write(commitFD, buffer, bytesToRead);
                 }
 
+                close(commitFD);
+
                 //Grab project path and pass to helper method to find commit file
                 char *path = malloc(strlen(projectName) + 3);
                 if (path == NULL){
@@ -492,6 +497,7 @@ void push(char *projectName, int socket){
                     return;
                 }
                 sprintf(path, "./%s", projectName);
+
                 searchforCommit(path, socket);
 
                 //update project directory's .manifest replacing information from .commit, increase projects version
@@ -576,8 +582,7 @@ void push(char *projectName, int socket){
                         write(manifestFD, manptr->fileName, strlen(manptr->fileName));
                         write(manifestFD, " ", 1);
                         write(manifestFD, "$N ", 3);
-                        char *fileVersion = malloc(sizeof(manptr->version) / 4 + 1);
-                        sprintf(fileVersion, "%d", manptr->version);
+                        char *fileVersion = itoa(manptr->version);
                         write(manifestFD, fileVersion, strlen(fileVersion));
                         write(manifestFD, " ", 1);
                         write(manifestFD, manptr->hash, strlen(manptr->hash));
@@ -958,7 +963,7 @@ void *clientServerInteract(void *socket_arg)
     }
     free(projectName);
     pthread_mutex_unlock(&lock);
-    // pthread_cancel(pthread_self());
+    pthread_cancel(pthread_self());
 }
 
 int main(int argc, char *argv[])
