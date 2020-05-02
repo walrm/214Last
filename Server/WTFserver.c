@@ -356,9 +356,11 @@ int searchforCommit(char *path, int socket){
                     int manifestFD = open(manifestFile, O_RDWR);
                     int manifestSize = manStats.st_size;
                     Manifest *man = createManifestStruct(manifestFD, manifestSize, "", 0, 1);
-                    system("mkdir Backups");
-                    char* tarPath = malloc(10+sizeof(man->manifestVersion)/4);
-                    sprintf(tarPath, "./Backup/%d", man->manifestVersion);
+                    
+                    char* makeBackup = malloc(strlen(path)+17);
+                    system("mkdir ./%s/Backups");
+                    char* tarPath = malloc(11+strlen(path)+sizeof(man->manifestVersion)/4);
+                    sprintf(tarPath, "./%s/Backup/%d", path, man->manifestVersion);
                     char* tarCall = malloc(19+strlen(tarPath)+strlen(path));
                     sprintf(tarCall, "tar -czvf %s.tar.gz %s", tarPath, path);
                     free(tarPath);
@@ -492,10 +494,8 @@ void push(char *projectName, int socket){
 
                 commitFD = open(commitFile, O_RDWR);
                 int manifestFD = open(manifestFile, O_RDWR);
-                int manifestSize = manStats.st_size;
-                int commitSize = commitStats.st_size;
-                Manifest *commit = createManifestStruct(commitFD, commitSize, "", 0, 0);
-                Manifest *man = createManifestStruct(manifestFD, manifestSize, "", 0, 1);
+                Manifest *commit = createManifestStruct(commitFD, commitStats.st_size, "", 0, 0);
+                Manifest *man = createManifestStruct(manifestFD, manStats.st_size, "", 0, 1);
 
                 Node *commitptr = commit->files;
                 Node *manptr = man->files;
@@ -692,7 +692,101 @@ void update(char* projectName, int socket){
 
 
 void upgrade(char* projectName, int socket){
+    DIR *cwd = opendir("./");
+    struct dirent *currentINode = NULL;
+    if(cwd == NULL){
+        possibleError(socket,"ERROR on opening directory");
+        return;
+    }
 
+    do{
+        currentINode = readdir(cwd);
+        if(currentINode!=NULL && currentINode->d_type == DT_DIR){
+            if (strcmp(currentINode->d_name, ".") == 0 || strcmp(currentINode->d_name, "..") == 0)
+                    continue;
+
+            //Project found, writing manifest data to socket
+            if(strcmp(currentINode->d_name,projectName)==0){
+                write(socket,"1",1); //send to client that project was found
+                
+                char s[2];
+                char buffer[256];
+                int totalBytes = 0, bytesRead = 0;
+                printf("reading bytes\n");
+                do{
+                    bzero(s, 2);
+                    read(socket, s, 1);
+                    if (s[0] != ' '){
+                        strcat(buffer, s);
+                    }
+                } while (s[0] != ' ');
+
+                totalBytes = atoi(buffer);
+                printf("TOTALBYTES: %d\n", totalBytes);
+
+                char* updateFile = malloc(strlen(projectName)+11);
+                sprintf(updateFile, "./%s/.Update", projectName);
+                int updateFD = open(updateFile, O_CREAT | O_RDWR, 00777);
+                int bytesToRead = 0;
+                //write out update file from client
+                while (bytesRead < totalBytes){
+                    bytesToRead = (totalBytes - bytesRead < 256) ? totalBytes - bytesRead : 255;
+                    bzero(buffer, 256);
+                    bytesRead += read(socket, buffer, bytesToRead);
+                    printf("BUFFER READ: %s\n", buffer);
+                    write(updateFD, buffer, bytesToRead);
+                }
+                
+                struct stat updateStats;
+                if (stat(updateFile, &updateStats) < 0){
+                    possibleError(socket, "ERROR reading history stats");
+                    return;
+                }
+                Manifest* update = createManifestStruct(updateFD, updateStats.st_size, "", 0, 0);
+                Node* updateptr = update->files;
+                char* tar = malloc(24);
+                sprintf(tar, "tar -czvf update.tar.gz ");
+                while(updateptr != NULL){
+                    if(updateptr->code == 3)
+                        continue;
+                    tar = (char*) realloc(tar, strlen(tar)+strlen(updateptr->fileName)+1);
+                    sprintf(tar, "%s ", updateptr->fileName);
+                }
+
+                if(system(tar)<0){
+                    possibleError("ERROR in creating tar file");
+                    return;
+                }
+                
+                int tarFD = open("update.tar.gz", O_RDONLY);
+
+                struct stat tarStats;
+                if(stat(tar,&tarStats)){
+                    possibleError("ERROR on reading tar stats");
+                    return;
+                }
+
+                char* tarSize = malloc(sizeof(tarStats.st_size)/4+1);
+                sprintf(tarSize, "%d", tarStats.st_size);
+                printf("TAR SIZE: %s\n", tarSize);
+
+                write(socket, tarSize, strlen(tarSize));
+                write(socket, " ", 1);
+                
+                char tarBuffer[256];
+                bytesRead = 0;
+                bytesToRead = 0;
+                while(tarStats.st_size> bytesRead){
+                    bytesToRead = (tarStats.st_size-bytesRead<256)? tarStats.st_size-bytesRead : 255;
+                    bzero(tarBuffer,256);
+                    bytesRead += read(tarFD,tarBuffer,bytesToRead);
+                    write(socket,tarBuffer,bytesToRead);
+                }
+                return;
+            }
+        }
+    }while(currentINode!= NULL);
+    write(socket, "0", 1); //write to client - project not found
 }
 
 void history(char* projectName, int socket){
@@ -750,6 +844,10 @@ void history(char* projectName, int socket){
         }
     }while(currentINode!= NULL);
     write(socket, "0", 1); //write to client - project not found
+}
+
+void rollback(char* projectName, int socket){
+    
 }
 
 //Handles communication between the server and client socket
