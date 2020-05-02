@@ -372,13 +372,9 @@ void checkout(char* projectName, int socket){
             if(strcmp(currentINode->d_name,projectName)==0){
                 write(socket,"1",1); //send to client that project was found
                 
-                //Find manifest path and open to read data
                 char* projectPath = malloc(strlen(projectName)+3);
                 bzero(projectPath,sizeof(projectPath));
-                projectPath[0] = '.';
-                projectPath[1] = '/';
-                strcat(projectPath,projectName);
-                projectPath[strlen(projectPath)] = '\0';
+                sprintf(projectPath, "./%s",projectName);
                 printf("PROJECT PATH: %s\n", projectPath);
 
                 sendFileInformation(projectPath,socket);
@@ -394,20 +390,126 @@ void checkout(char* projectName, int socket){
     write(socket,"0",1); //write to client project doesn't exist
 }
 
+//Commit command. Send manifest file over and have client update files and then receive commit file
+void commit(char *projectName, int socket)
+{
+    DIR *cwd = opendir("./");
+    if (cwd == NULL)
+    {
+        possibleError(socket, "ERROR on opening directory");
+        return;
+    }
 
-// void writeProjPath(char* projectPath, int manifestFD){
-//     DIR* cwd = opendir(projectPath);
-//     struct dirent *currentINode = NULL;
-//     do{
-//         currentINode = readdir(cwd);
-//         if(currentINode==NULL) return;
-//         if(currentINode->d_type == DT_DIR){
-//             if (strcmp(currentINode->d_name, ".") == 0 || strcmp(currentINode->d_name, "..") == 0)
-//                     continue;
-//             char nextPath[PATH_MAX];
-//             strcpy(nextPath, path);
-//             strcat(strcat(nextPath, "/"), currentINode->d_name);
-//             writeProjPath(nextPath, manifestFD);
-//         }
-//     }while(currentINode!=NULL);
-// }
+    struct dirent *currentINode = NULL;
+    do
+    {
+        currentINode = readdir(cwd);
+        if (currentINode != NULL && currentINode->d_type == DT_DIR)
+        {
+            if (strcmp(currentINode->d_name, ".") == 0 || strcmp(currentINode->d_name, "..") == 0)
+                continue;
+
+            if (strcmp(currentINode->d_name, projectName) == 0)
+            {
+                write(socket, "1", 1);
+
+                char *manifestPath = malloc(strlen(projectName) + 13);
+                bzero(manifestPath, sizeof(manifestPath));
+                sprintf(manifestPath, "./%s/.Manifest", projectName);
+                printf("MANIFEST PATH: %s\n", manifestPath);
+                int manifestFD = open(manifestPath, O_RDONLY);
+
+                //Use stats to read total bytes of manifest file
+                struct stat manStats;
+                if (stat(manifestPath, &manStats) < 0)
+                {
+                    possibleError(socket, "ERROR reading manifest stats");
+                    return;
+                }
+
+                int size = manStats.st_size;
+                int bytesRead = 0, bytesToRead = 0;
+                char manBuffer[256];
+
+                //Send size of manifest file to client
+                sprintf(manBuffer, "%d", size);
+                write(socket, manBuffer, strlen(manBuffer));
+                write(socket, " ", 1);
+                printf("manBuffer: %s\n", manBuffer);
+                printf("manBuffer size: %d\n", strlen(manBuffer));
+
+                //Send manifest bytes to client
+                while (size > bytesRead)
+                {
+                    bytesToRead = (size - bytesRead < 256) ? size - bytesRead : 255;
+                    bzero(manBuffer, 256);
+                    bytesRead += read(manifestFD, manBuffer, bytesToRead);
+                    printf("MANBUFFER:\n%s\n", manBuffer);
+                    write(socket, manBuffer, bytesToRead);
+                }
+
+                //Receive status and then receive commit file
+                int i = 0;
+                char *status = malloc(2);
+
+                read(socket, status, 1); //status of commit from client
+                int st = atoi(status);
+                free(status);
+                if (st == 0)
+                {
+                    free(manifestPath);
+                    close(manifestFD);
+                    return;
+                }
+
+                //Read in commit file if success on client side
+                char *commit = malloc(strlen(projectName) + 13);
+                sprintf(commit, "./%s/.Commit%d", projectName, i);
+                int commitFD = open(commit, O_CREAT, 00777);
+                while (commitFD == -1)
+                {
+                    i++;
+                    sprintf(commit, "./%s/.Commit%d", projectName, i);
+                    commitFD = open(commit, O_CREAT, 00777);
+                }
+
+                commitFD = open(commit, O_RDWR);
+                char s[2];
+                char buffer[256];
+                int totalBytes = 0;
+                bytesRead = 0;
+
+                do
+                {
+                    bzero(s, 2);
+                    read(socket, s, 1);
+                    if (s[0] != ' ')
+                        strcat(buffer, s);
+                } while (s[0] != ' ');
+
+                totalBytes = atoi(buffer);
+
+                printf("TOTALBYTES: %d\n", totalBytes);
+
+                //write out commit file from client
+                while (bytesRead < totalBytes)
+                {
+                    bytesToRead = (totalBytes - bytesRead < 256) ? totalBytes - bytesRead : 255;
+                    bzero(buffer, 256);
+                    bytesRead += read(socket, buffer, bytesToRead);
+                    printf("BUFFER READ: %s\n", buffer);
+                    write(commitFD, buffer, bytesToRead);
+                }
+
+                write(socket, "1", 1); //write to client - commit successfully stored in server side
+
+                free(commit);
+                free(manifestPath);
+                close(commitFD);
+                close(manifestFD);
+                return;
+            }
+        }
+    } while (currentINode != NULL); //project doesn't exist
+    write(socket, "0", 1);          //write to client - project does not exist
+}

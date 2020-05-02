@@ -279,130 +279,6 @@ Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int is
     return man;
 }
 
-//TODO: commit command. Send manifest file over and have client update files and then receive commit file
-void commit(char *projectName, int socket)
-{
-    DIR *cwd = opendir("./");
-    if (cwd == NULL)
-    {
-        possibleError(socket, "ERROR on opening directory");
-        return;
-    }
-
-    struct dirent *currentINode = NULL;
-    do
-    {
-        currentINode = readdir(cwd);
-        if (currentINode != NULL && currentINode->d_type == DT_DIR)
-        {
-            if (strcmp(currentINode->d_name, ".") == 0 || strcmp(currentINode->d_name, "..") == 0)
-                continue;
-
-            if (strcmp(currentINode->d_name, projectName) == 0)
-            {
-                write(socket, "1", 1);
-
-                char *manifestPath = malloc(strlen(projectName) + 13);
-                bzero(manifestPath, sizeof(manifestPath));
-                sprintf(manifestPath, "./%s/.Manifest", projectName);
-                printf("MANIFEST PATH: %s\n", manifestPath);
-                int manifestFD = open(manifestPath, O_RDONLY);
-
-                //Use stats to read total bytes of manifest file
-                struct stat manStats;
-                if (stat(manifestPath, &manStats) < 0)
-                {
-                    possibleError(socket, "ERROR reading manifest stats");
-                    return;
-                }
-
-                int size = manStats.st_size;
-                int bytesRead = 0, bytesToRead = 0;
-                char manBuffer[256];
-
-                //Send size of manifest file to client
-                sprintf(manBuffer, "%d", size);
-                write(socket, manBuffer, strlen(manBuffer));
-                write(socket, " ", 1);
-                printf("manBuffer: %s\n", manBuffer);
-                printf("manBuffer size: %d\n", strlen(manBuffer));
-
-                //Send manifest bytes to client
-                while (size > bytesRead)
-                {
-                    bytesToRead = (size - bytesRead < 256) ? size - bytesRead : 255;
-                    bzero(manBuffer, 256);
-                    bytesRead += read(manifestFD, manBuffer, bytesToRead);
-                    printf("MANBUFFER:\n%s\n", manBuffer);
-                    write(socket, manBuffer, bytesToRead);
-                }
-
-                //Receive status and then receive commit file
-                int i = 0;
-                char *status = malloc(2);
-
-                read(socket, status, 1); //status of commit from client
-                int st = atoi(status);
-                free(status);
-                if (st == 0)
-                {
-                    free(manifestPath);
-                    close(manifestFD);
-                    return;
-                }
-
-                //Read in commit file if success on client side
-                char *commit = malloc(strlen(projectName) + 13);
-                sprintf(commit, "./%s/.Commit%d", projectName, i);
-                int commitFD = open(commit, O_CREAT, 00777);
-                while (commitFD == -1)
-                {
-                    i++;
-                    sprintf(commit, "./%s/.Commit%d", projectName, i);
-                    commitFD = open(commit, O_CREAT, 00777);
-                }
-
-                commitFD = open(commit, O_RDWR);
-                char s[2];
-                char buffer[256];
-                int totalBytes = 0;
-                bytesRead = 0;
-
-                do
-                {
-                    bzero(s, 2);
-                    read(socket, s, 1);
-                    if (s[0] != ' ')
-                        strcat(buffer, s);
-                } while (s[0] != ' ');
-
-                totalBytes = atoi(buffer);
-
-                printf("TOTALBYTES: %d\n", totalBytes);
-
-                //write out commit file from client
-                while (bytesRead < totalBytes)
-                {
-                    bytesToRead = (totalBytes - bytesRead < 256) ? totalBytes - bytesRead : 255;
-                    bzero(buffer, 256);
-                    bytesRead += read(socket, buffer, bytesToRead);
-                    printf("BUFFER READ: %s\n", buffer);
-                    write(commitFD, buffer, bytesToRead);
-                }
-
-                write(socket, "1", 1); //write to client - commit successfully stored in server side
-
-                free(commit);
-                free(manifestPath);
-                close(commitFD);
-                close(manifestFD);
-                return;
-            }
-        }
-    } while (currentINode != NULL); //project doesn't exist
-    write(socket, "0", 1);          //write to client - project does not exist
-}
-
 void expireCommits(char *path)
 {
     DIR *cwd = opendir(path);
@@ -436,23 +312,18 @@ void expireCommits(char *path)
 }
 
 //Search for matching commit file in the project,
-int searchforCommit(char *path, int socket)
-{
+int searchforCommit(char *path, int socket){
     DIR *cwd = opendir(path);
-    if (cwd == NULL)
-    {
+    if (cwd == NULL){
         possibleError(socket, "ERROR on opening directory");
         return;
     }
 
     struct dirent *currentINode = NULL;
-    do
-    {
+    do{
         currentINode = readdir(cwd);
-        if (currentINode != NULL && currentINode->d_type != DT_DIR)
-        {
-            if (strlen(currentINode->d_name) > 7 && strncmp(currentINode->d_name, ".Commit", 7) == 0 && strcmp(currentINode->d_name, ".Commit00") != 0)
-            {
+        if (currentINode != NULL && currentINode->d_type != DT_DIR){
+            if (strlen(currentINode->d_name) > 7 && strncmp(currentINode->d_name, ".Commit", 7) == 0 && strcmp(currentINode->d_name, ".Commit00") != 0){
                 printf("Found a Commit File\n");
 
                 char *difference = calloc(strlen(path) * 3 + strlen(currentINode->d_name) + 31, 1);
@@ -469,17 +340,35 @@ int searchforCommit(char *path, int socket)
                 free(checkFile);
 
                 status = read(clientFD, difference, 1);
-                if (status == 0)
-                {
+                if (status == 0){
                     printf("THIS IS THE FILE!\n");
                     write(socket, "1", 1); //write to client - commit file found
+                    
+                    //Create a tar of the previous project before for backups
+                    char *manifestFile = malloc(strlen(path) + 11);
+                    sprintf(manifestFile, "%s/.Manifest", path);
+                    struct stat manStats;
+                    if (stat(manifestFile, &manStats) < 0){
+                        possibleError(socket, "ERROR reading manifest stats");
+                        return;
+                    }
+
+                    int manifestFD = open(manifestFile, O_RDWR);
+                    int manifestSize = manStats.st_size;
+                    Manifest *man = createManifestStruct(manifestFD, manifestSize, "", 0, 1);
+                    system("mkdir Backups");
+                    char* tarPath = malloc(10+sizeof(man->manifestVersion)/4);
+                    sprintf(tarPath, "./Backup/%d", man->manifestVersion);
+                    char* tarCall = malloc(19+strlen(tarPath)+strlen(path));
+                    sprintf(tarCall, "tar -czvf %s.tar.gz %s", tarPath, path);
+                    free(tarPath);
+                    free(tarCall);
 
                     char s[2];
                     char buffer[256];
                     bzero(buffer,256);
                     int totalBytes = 0, bytesRead = 0;
-                    do
-                    {
+                    do{
                         bzero(s, 2);
                         read(socket, s, 1);
                         if (s[0] != ' ')
@@ -494,15 +383,13 @@ int searchforCommit(char *path, int socket)
 
                     int bytesToRead = 0;
                     //Accept files from client
-                    while (bytesRead < totalBytes)
-                    {
+                    while (bytesRead < totalBytes){
                         bytesToRead = (totalBytes - bytesRead < 256) ? totalBytes - bytesRead : 255;
                         bzero(buffer, 256);
                         bytesRead += read(socket, buffer, bytesToRead);
                         printf("BUFFER READ: %s\n", buffer);
                         write(tarFD, buffer, bytesToRead);
                     }
-
                     close(tarFD);
 
                     //Write all files the client sent to project
@@ -510,144 +397,14 @@ int searchforCommit(char *path, int socket)
                     untarStatus = system("rm archive.tar.gz"); //remove the tar file
                     expireCommits(path); //Expire all other commits
 
-                    //-------------------------------------------------------------------------------------------------
-
-                    //update project directory's .manifest replacing information from .commit, increase projects version
-                    char *commitFile = malloc(strlen(path) + 9);
-                    sprintf(commitFile, "%s/.Commit", path);
-
-                    struct stat commitStats;
-                    if (stat(commitFile, &commitStats) < 0)
-                    {
-                        possibleError(socket, "ERROR reading manifest stats");
-                        return;
-                    }
-
-                    char *manifestFile = malloc(strlen(path) + 11);
-                    sprintf(manifestFile, "%s/.Manifest", path);
-                    struct stat manStats;
-                    if (stat(manifestFile, &manStats) < 0)
-                    {
-                        possibleError(socket, "ERROR reading manifest stats");
-                        return;
-                    }
-
-                    int commitFD = open(commitFile, O_RDWR);
-                    int manifestFD = open(manifestFile, O_RDWR);
-                    int manifestSize = manStats.st_size;
-                    int commitSize = commitStats.st_size;
-                    Manifest *commit = createManifestStruct(commitFD, commitSize, "", 0, 0);
-                    Manifest *man = createManifestStruct(manifestFD, manifestSize, "", 0, 1);
-
-                    Node *commitptr = commit->files;
-                    Node *manptr = man->files;
-                    man->manifestVersion++;
-
-                    while (commitptr != NULL)
-                    {
-                        if (commitptr->code == 3)
-                        {
-                            //Remove file
-                            while (strcmp(manptr->fileName, commitptr->fileName) != 0)
-                                manptr = manptr->next;
-                            manptr->fileName = "";
-                            char *systemCall = malloc(strlen(commitptr->fileName) + 4);
-                            sprintf(systemCall, "rm %s", commitptr->fileName);
-                            int rmStatus = system(systemCall);
-                            free(systemCall);
-                        }
-                        else if (commitptr->code == 1)
-                        { //NEED TO TEST: add in commit
-                            Node *newFile = malloc(sizeof(Node));
-                            newFile->fileName = malloc(strlen(commitptr->fileName));
-                            newFile->hash = malloc(strlen(commitptr->hash));
-                            strcpy(newFile->fileName, commitptr->fileName);
-                            strcpy(newFile->hash, commitptr->hash);
-                            newFile->code = 0;
-                            newFile->version = 0;
-
-                            Node* temp = manptr->next;
-                            manptr->next = newFile;
-                            manptr->next->next = temp;
-                        }
-                        else
-                        {
-                            //Update hash, code, version
-                            while (strcmp(manptr->fileName, commitptr->fileName) != 0)
-                                manptr = manptr->next;
-                            manptr->hash = commitptr->hash;
-                            manptr->code = 0;
-                            manptr->version++;
-                        }
-                        commitptr = commitptr->next;
-                        manptr = man->files;
-                    }
-
-                    char* removeCommit = malloc(strlen(path)+12);
-                    sprintf(removeCommit, "rm %s/.Commit",path);
-                    int rmCommit = system(removeCommit); 
-
-                    //Update manifest file through the manifest structure
-                    close(manifestFD);
-                    remove(manifestFile);
-                    manifestFD = open(manifestFile, O_CREAT | O_RDWR, 00777);
-                    char *manVersion = malloc(sizeof(man->manifestVersion) / 4 + 1);
-                    sprintf(manVersion, "%d\n", man->manifestVersion);
-                    printf("new man version and length: %s,%d\n", manVersion, strlen(manVersion));
-                    write(manifestFD, manVersion, strlen(manVersion));
-
-                    //Write out new manifest file
-                    while (manptr != NULL)
-                    {
-                        if (strlen(manptr->fileName) != 0)
-                        {
-                            write(manifestFD, manptr->fileName, strlen(manptr->fileName));
-                            write(manifestFD, " ", 1);
-                            char *fileVersion = malloc(sizeof(manptr->version) / 4 + 1);
-                            sprintf(fileVersion, "%d", manptr->version);
-                            write(manifestFD, fileVersion, strlen(fileVersion));
-                            write(manifestFD, " ", 1);
-                            write(manifestFD, manptr->hash, strlen(manptr->hash));
-                            write(manifestFD, "\n", 1);
-                            free(fileVersion);
-                        }
-                        manptr = manptr->next;
-                    }
-
-                    manifestFD = open(manifestFile, O_RDONLY);
-                    if(stat(manifestFile,&manStats)<0){
-                        possibleError(socket,"ERROR reading manifest stats");
-                        return;
-                    }
-
-                    int size = manStats.st_size; 
-                    bytesRead = 0, bytesToRead = 0;
-                    char manBuffer[256];
-                    
-                    //Send size of manifest file to client
-                    sprintf(manBuffer,"%d", size);
-                    write(socket,manBuffer,strlen(manBuffer));
-                    write(socket," ",1);
-                    printf("manBuffer: %s\n",manBuffer);
-                    printf("manBuffer size: %d\n", strlen(manBuffer));
-
-                    //Send manifest bytes to client
-                    while(size > bytesRead){
-                        bytesToRead = (size-bytesRead<256)? size-bytesRead : 255;
-                        bzero(manBuffer,256);
-                        bytesRead += read(manifestFD,manBuffer,bytesToRead);
-                        printf("MANBUFFER:\n%s\n", manBuffer);
-                        write(socket,manBuffer,bytesToRead);
-                    }
-                    
-                    //free the two structs
-                    close(manifestFD);
-                    free(manVersion);
-                    close(commitFD);
-                    free(manifestFile);
-                    free(commitFile);
                     return;
                 }
+
+                //no commit file found - remove .commit00
+                char* removeDiff = malloc(strlen(path)+11);
+                sprintf(removeDiff, "%s/.Commit00", path);
+                int rmDiff = system(removeDiff);
+                free(removeDiff);
             }
         }
     } while (currentINode != NULL);
@@ -656,43 +413,37 @@ int searchforCommit(char *path, int socket)
 }
 
 //TODO: push command for server side
-void push(char *projectName, int socket)
-{
+void push(char *projectName, int socket){
     //Look for project and then take in commit and then look for the same commit file in the project
     DIR *cwd = opendir("./");
-    if (cwd == NULL)
-    {
+    if (cwd == NULL){
         possibleError(socket, "ERROR on opening directory");
         return;
     }
 
     struct dirent *currentINode = NULL;
-    do
-    {
+    do{
         currentINode = readdir(cwd);
-        if (currentINode != NULL && currentINode->d_type == DT_DIR)
-        {
+        if (currentINode != NULL && currentINode->d_type == DT_DIR){
             if (strcmp(currentINode->d_name, ".") == 0 || strcmp(currentINode->d_name, "..") == 0)
                 continue;
 
-            if (strcmp(currentINode->d_name, projectName) == 0)
-            {
+            if (strcmp(currentINode->d_name, projectName) == 0){
                 write(socket, "1", 1); //write to client project found
 
-                char *commit = malloc(strlen(projectName) + 11);
-                sprintf(commit, "./%s/.Commit", projectName);
-                int commitFD = open(commit, O_CREAT | O_RDWR, 00777);
+                char *commitFile = malloc(strlen(projectName) + 11);
+                sprintf(commitFile, "./%s/.Commit", projectName);
+                int commitFD = open(commitFile, O_CREAT | O_RDWR, 00777);
+                free(commitFile);
 
                 char s[2];
                 char buffer[256];
                 int totalBytes = 0, bytesRead = 0;
                 printf("reading bytes\n");
-                do
-                {
+                do{
                     bzero(s, 2);
                     read(socket, s, 1);
-                    if (s[0] != ' ')
-                    {
+                    if (s[0] != ' '){
                         strcat(buffer, s);
                         printf("%s\n", buffer);
                     }
@@ -703,8 +454,7 @@ void push(char *projectName, int socket)
 
                 int bytesToRead = 0;
                 //write out commit file from client
-                while (bytesRead < totalBytes)
-                {
+                while (bytesRead < totalBytes){
                     bytesToRead = (totalBytes - bytesRead < 256) ? totalBytes - bytesRead : 255;
                     bzero(buffer, 256);
                     bytesRead += read(socket, buffer, bytesToRead);
@@ -714,8 +464,7 @@ void push(char *projectName, int socket)
 
                 //Grab project path and pass to helper method to find commit file
                 char *path = malloc(strlen(projectName) + 3);
-                if (path == NULL)
-                {
+                if (path == NULL){
                     possibleError(socket, "ERROR on malloc");
                     return;
                 }
@@ -723,10 +472,284 @@ void push(char *projectName, int socket)
                 sprintf(path, "./%s", projectName);
                 searchforCommit(path, socket);
 
+                //update project directory's .manifest replacing information from .commit, increase projects version
+                commitFile = malloc(strlen(path) + 9);
+                sprintf(commitFile, "%s/.Commit", path);
+
+                struct stat commitStats;
+                if (stat(commitFile, &commitStats) < 0){
+                    possibleError(socket, "ERROR reading manifest stats");
+                    return;
+                }
+
+                char *manifestFile = malloc(strlen(path) + 11);
+                sprintf(manifestFile, "%s/.Manifest", path);
+                struct stat manStats;
+                if (stat(manifestFile, &manStats) < 0){
+                    possibleError(socket, "ERROR reading manifest stats");
+                    return;
+                }
+
+                commitFD = open(commitFile, O_RDWR);
+                int manifestFD = open(manifestFile, O_RDWR);
+                int manifestSize = manStats.st_size;
+                int commitSize = commitStats.st_size;
+                Manifest *commit = createManifestStruct(commitFD, commitSize, "", 0, 0);
+                Manifest *man = createManifestStruct(manifestFD, manifestSize, "", 0, 1);
+
+                Node *commitptr = commit->files;
+                Node *manptr = man->files;
+                man->manifestVersion++;
+
+                while (commitptr != NULL){
+                    if (commitptr->code == 3){
+                        //Remove file from the project
+                        while (strcmp(manptr->fileName, commitptr->fileName) != 0)
+                            manptr = manptr->next;
+                        manptr->fileName = "";
+                        char *systemCall = malloc(strlen(commitptr->fileName) + 4);
+                        sprintf(systemCall, "rm %s", commitptr->fileName);
+                        int rmStatus = system(systemCall);
+                        free(systemCall);
+                    }
+                    else if (commitptr->code == 1){ 
+                        //NEED TO TEST: add in commit
+                        Node *newFile = malloc(sizeof(Node));
+                        newFile->fileName = malloc(strlen(commitptr->fileName));
+                        newFile->hash = malloc(strlen(commitptr->hash));
+                        strcpy(newFile->fileName, commitptr->fileName);
+                        strcpy(newFile->hash, commitptr->hash);
+                        newFile->code = 0;
+                        newFile->version = 0;
+
+                        Node* temp = manptr->next;
+                        manptr->next = newFile;
+                        manptr->next->next = temp;
+                    }
+                    else{
+                        //Update hash, code, version
+                        while (strcmp(manptr->fileName, commitptr->fileName) != 0)
+                            manptr = manptr->next;
+                        manptr->hash = commitptr->hash;
+                        manptr->code = 0;
+                        manptr->version++;
+                    }
+                    commitptr = commitptr->next;
+                    manptr = man->files;
+                }
+
+                //Update manifest file through the manifest structure
+                close(manifestFD);
+                remove(manifestFile);
+                manifestFD = open(manifestFile, O_CREAT | O_RDWR, 00777);
+                char *manVersion = malloc(sizeof(man->manifestVersion) / 4 + 1);
+                sprintf(manVersion, "%d\n", man->manifestVersion);
+                printf("new man version and length: %s,%d\n", manVersion, strlen(manVersion));
+                write(manifestFD, manVersion, strlen(manVersion));
+
+                //Write out new manifest file
+                while (manptr != NULL){
+                    if (strlen(manptr->fileName) != 0){
+                        write(manifestFD, manptr->fileName, strlen(manptr->fileName));
+                        write(manifestFD, " ", 1);
+                        write(manifestFD, "$N ", 3);
+                        char *fileVersion = malloc(sizeof(manptr->version) / 4 + 1);
+                        sprintf(fileVersion, "%d", manptr->version);
+                        write(manifestFD, fileVersion, strlen(fileVersion));
+                        write(manifestFD, " ", 1);
+                        write(manifestFD, manptr->hash, strlen(manptr->hash));
+                        write(manifestFD, "\n", 1);
+                        free(fileVersion);
+                    }
+                    manptr = manptr->next;
+                }
+
+                //Write out history of push into a .history file with new manifest version
+                char* historyFile = malloc(10+strlen(path));
+                sprintf(historyFile, "%s/.History",path);
+                int historyStatus = open(historyFile, O_CREAT | O_WRONLY | O_APPEND, 00777);
+                free(historyFile);
+                
+                commitptr = commit->files;
+                while(commitptr!= NULL){
+                    write(historyStatus, manVersion, strlen(manVersion));
+                    write(historyStatus, commitptr->fileName, strlen(commitptr->fileName));
+                    write(historyStatus, " ", 1);
+                    char* fileCode = malloc(sizeof(commitptr->code)/4+1);
+                    sprintf(fileCode, "%d", commitptr->code);
+                    write(historyStatus, fileCode, strlen(fileCode));
+                    char* fileVer = malloc(sizeof(commitptr->version)/4+1);
+                    sprintf(fileVer, "%d", commitptr->version);
+                    write(historyStatus, fileVer, strlen(fileVer));
+                    write(historyStatus, " ", 1);
+                    write(historyStatus, commitptr->hash, strlen(commitptr->hash));
+                    write(historyStatus, "\n", 1);
+                    write(historyStatus, "\n", 1);
+                    free(fileVer);
+                    free(fileCode);
+                }
+                
+                //Remove commit file - sent from the client
+                char* removeCommit = malloc(strlen(path)+12);
+                sprintf(removeCommit, "rm %s/.Commit",path);
+                int rmCommit = system(removeCommit); 
+                free(removeCommit);
+
+                manifestFD = open(manifestFile, O_RDONLY);
+                if(stat(manifestFile,&manStats)<0){
+                    possibleError(socket,"ERROR reading manifest stats");
+                    return;
+                }
+
+                int size = manStats.st_size; 
+                bytesRead = 0, bytesToRead = 0;
+                char manBuffer[256];
+                
+                //Send size of manifest file to client
+                sprintf(manBuffer,"%d", size);
+                write(socket,manBuffer,strlen(manBuffer));
+                write(socket," ",1);
+                printf("manBuffer: %s\n",manBuffer);
+                printf("manBuffer size: %d\n", strlen(manBuffer));
+
+                //Send manifest bytes to client
+                while(size > bytesRead){
+                    bytesToRead = (size-bytesRead<256)? size-bytesRead : 255;
+                    bzero(manBuffer,256);
+                    bytesRead += read(manifestFD,manBuffer,bytesToRead);
+                    printf("MANBUFFER:\n%s\n", manBuffer);
+                    write(socket,manBuffer,bytesToRead);
+                }
+                
+                //TODO: free the two structs
+                close(manifestFD);
+                free(manVersion);
+                close(commitFD);
+                free(manifestFile);
+                free(commitFile);
                 return;
             }
         }
     } while (currentINode != NULL); //project doesn't exist
+}
+
+void update(char* projectName, int socket){
+    DIR *cwd = opendir("./");
+    struct dirent *currentINode = NULL;
+    if(cwd == NULL){
+        possibleError(socket,"ERROR on opening directory");
+        return;
+    }
+
+    do{
+        currentINode = readdir(cwd);
+        if(currentINode!=NULL && currentINode->d_type == DT_DIR){
+            if (strcmp(currentINode->d_name, ".") == 0 || strcmp(currentINode->d_name, "..") == 0)
+                    continue;
+
+            //Project found, writing manifest data to socket
+            if(strcmp(currentINode->d_name,projectName)==0){
+                write(socket,"1",1); //send to client that project was found
+                
+                //send manifest file to client
+                char* manifest = malloc(strlen(projectName)+13);
+                sprintf(manifest, "./%s/.Manifest",projectName);
+                int manifestFD = open(manifest, O_RDONLY);
+
+                //Use stats to read total bytes of manifest file
+                struct stat manStats;
+                if (stat(manifest, &manStats) < 0)
+                {
+                    possibleError(socket, "ERROR reading manifest stats");
+                    return;
+                }
+
+                int size = manStats.st_size;
+                int bytesRead = 0, bytesToRead = 0;
+                char manBuffer[256];
+
+                //Send size of manifest file to client
+                sprintf(manBuffer, "%d", size);
+                write(socket, manBuffer, strlen(manBuffer));
+                write(socket, " ", 1);
+                printf("manBuffer: %s\n", manBuffer);
+                printf("manBuffer size: %d\n", strlen(manBuffer));
+
+                //Send manifest bytes to client
+                while (size > bytesRead)
+                {
+                    bytesToRead = (size - bytesRead < 256) ? size - bytesRead : 255;
+                    bzero(manBuffer, 256);
+                    bytesRead += read(manifestFD, manBuffer, bytesToRead);
+                    printf("MANBUFFER:\n%s\n", manBuffer);
+                    write(socket, manBuffer, bytesToRead);
+                }
+            }
+        }
+    }while(currentINode!= NULL);
+    write(socket, "0", 1); //write to client - project not found
+}
+
+
+void upgrade(char* projectName, int socket){
+
+}
+
+void history(char* projectName, int socket){
+    DIR *cwd = opendir("./");
+    struct dirent *currentINode = NULL;
+    if(cwd == NULL){
+        possibleError(socket,"ERROR on opening directory");
+        return;
+    }
+
+    do{
+        currentINode = readdir(cwd);
+        if(currentINode!=NULL && currentINode->d_type == DT_DIR){
+            if (strcmp(currentINode->d_name, ".") == 0 || strcmp(currentINode->d_name, "..") == 0)
+                    continue;
+
+            //Project found, writing manifest data to socket
+            if(strcmp(currentINode->d_name,projectName)==0){
+                write(socket,"1",1); //send to client that project was found
+                
+                //send history file to client
+                char* historyFile = malloc(strlen(projectName)+12);
+                sprintf(historyFile, "./%s/.History",projectName);
+                int historyFD = open(historyFile, O_RDONLY);
+
+                //Use stats to read total bytes of history file
+                struct stat histStats;
+                if (stat(historyFile, &histStats) < 0)
+                {
+                    possibleError(socket, "ERROR reading history stats");
+                    return;
+                }
+
+                int size = histStats.st_size;
+                int bytesRead = 0, bytesToRead = 0;
+                char buffer[256];
+
+                //Send size of manifest file to client
+                sprintf(buffer, "%d", size);
+                write(socket, buffer, strlen(buffer));
+                write(socket, " ", 1);
+                printf("buffer: %s\n", buffer);
+                printf("buffer size: %d\n", strlen(buffer));
+
+                //Send manifest bytes to client
+                while (size > bytesRead)
+                {
+                    bytesToRead = (size - bytesRead < 256) ? size - bytesRead : 255;
+                    bzero(buffer, 256);
+                    bytesRead += read(historyFD, buffer, bytesToRead);
+                    printf("BUFFER:\n%s\n", buffer);
+                    write(socket, buffer, bytesToRead);
+                }
+            }
+        }
+    }while(currentINode!= NULL);
+    write(socket, "0", 1); //write to client - project not found
 }
 
 //Handles communication between the server and client socket
