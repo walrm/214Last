@@ -1355,8 +1355,8 @@ void update(char *projectName)
     {
         return;
     }
-    char *command = calloc(strlen("2") + strlen(projectName) + 1, 1);
-    strcat(command, "2");
+    char *command = calloc(strlen("1") + strlen(projectName) + 1, 1);
+    strcat(command, "1");
     strcat(command, projectName);
     write(socketFD, command, strlen(command));
     free(command);
@@ -1535,6 +1535,137 @@ void update(char *projectName)
  * 
  */
 
+void upgrade(char *projectName)
+{
+    DIR *dir = opendir(projectName);
+    if (dir)
+    {
+        closedir(dir);
+    }
+    else
+    {
+        printf("Error: Directory does not exist locally\n");
+        return;
+    }
+
+    char *updateFilePath = calloc(strlen(projectName) + strlen("/.Update") + 1, 1);
+    sprintf(updateFilePath, "%s/.Update", projectName);
+
+    struct stat stat_record;
+    if (stat(updateFilePath, &stat_record))
+    {
+        printf("Update file does not exist\n");
+        return;
+    }
+    else if (stat_record.st_size <= 1)
+    {
+        printf("Update file is empty\n");
+        return;
+    }
+
+    //Connects with the server and sends the command and project name
+    int socketFD = checkConnection();
+    if (socketFD == -1)
+    {
+        return;
+    }
+    char *command = calloc(strlen("2") + strlen(projectName) + 1, 1);
+    strcat(command, "2");
+    strcat(command, projectName);
+    write(socketFD, command, strlen(command));
+    free(command);
+    char *status = calloc(2, 1);
+    read(socketFD, status, 1);
+    if (atoi(status) == 0)
+    {
+        printf("Project does not exist on the server\n");
+        free(status);
+        closeConnection(socketFD);
+    }
+    int updateFD = open(updateFilePath, O_RDONLY, 00777);
+    sendFile(updateFD, socketFD);
+    close(updateFD);
+    updateFD = open(updateFilePath, O_RDONLY, 00777);
+    char *manifestFilePath = calloc(strlen(projectName) + strlen("/.Manifest") + 1, 1);
+    sprintf(manifestFilePath, "%s/.Manifest", projectName);
+    int manifestFD = open(manifestFilePath, O_RDONLY);
+    Manifest *update = createManifestStruct(updateFD, getFileSize(updateFD), "", 0, 0);
+    Manifest *man = createManifestStruct(manifestFD, getFileSize(manifestFD), "", 0, 1);
+
+    Node *commitptr = update->files;
+    Node *manptr = man->files;
+    man->manifestVersion++;
+
+    while (commitptr != NULL)
+    {
+        if (commitptr->code == 3)
+        {
+            //Remove file from the project
+            while (strcmp(manptr->fileName, commitptr->fileName) != 0)
+                manptr = manptr->next;
+            manptr->fileName = "";
+            char *systemCall = malloc(strlen(commitptr->fileName) + 4);
+            sprintf(systemCall, "rm %s", commitptr->fileName);
+            int rmStatus = system(systemCall);
+            free(systemCall);
+        }
+        else if (commitptr->code == 1)
+        {
+            //NEED TO TEST: add in commit
+            Node *newFile = malloc(sizeof(Node));
+            newFile->fileName = malloc(strlen(commitptr->fileName));
+            newFile->hash = malloc(strlen(commitptr->hash));
+            strcpy(newFile->fileName, commitptr->fileName);
+            strcpy(newFile->hash, commitptr->hash);
+            newFile->code = 0;
+            newFile->version = 0;
+
+            Node *temp = manptr->next;
+            manptr->next = newFile;
+            manptr->next->next = temp;
+        }
+        else
+        {
+            //Update hash, code, version
+            while (strcmp(manptr->fileName, commitptr->fileName) != 0)
+                manptr = manptr->next;
+            manptr->hash = commitptr->hash;
+            manptr->code = 0;
+            manptr->version++;
+        }
+        commitptr = commitptr->next;
+        manptr = man->files;
+    }
+    close(manifestFD);
+    remove(manifestFilePath);
+    manifestFD = open(manifestFilePath, O_CREAT | O_RDWR, 00777);
+    char *manVersion = malloc(sizeof(man->manifestVersion) / 4 + 1);
+    sprintf(manVersion, "%d\n", man->manifestVersion);
+    printf("new man version and length: %s,%d\n", manVersion, strlen(manVersion));
+    write(manifestFD, manVersion, strlen(manVersion));
+    //Write out new manifest file
+    while (manptr != NULL)
+    {
+        if (strlen(manptr->fileName) != 0)
+        {
+            write(manifestFD, manptr->fileName, strlen(manptr->fileName));
+            write(manifestFD, " ", 1);
+            write(manifestFD, "$N ", 3);
+            char *fileVersion = malloc(sizeof(manptr->version) / 4 + 1);
+            sprintf(fileVersion, "%d", manptr->version);
+            write(manifestFD, fileVersion, strlen(fileVersion));
+            write(manifestFD, " ", 1);
+            write(manifestFD, manptr->hash, strlen(manptr->hash));
+            write(manifestFD, "\n", 1);
+            free(fileVersion);
+        }
+        manptr = manptr->next;
+    }
+    int tarTotalBytes=getTotalBytes(socketFD);
+    makeFile(socketFD,"update.tar.gz",tarTotalBytes);
+    system("tar -xzf update.tar.gz");
+}
+
 void history(char *projectName)
 {
     int socketFD = checkConnection();
@@ -1600,6 +1731,7 @@ void rollback(char *projectName, int version)
     }
     free(status);
 }
+
 int main(int argc, char *argv[])
 {
     if (argc == 1 || argc == 2)
