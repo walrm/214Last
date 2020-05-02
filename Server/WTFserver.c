@@ -603,8 +603,14 @@ void push(char *projectName, int socket){
                 while(commitptr!= NULL){
                     write(historyStatus, commitptr->fileName, strlen(commitptr->fileName));
                     write(historyStatus, " ", 1);
-                    char* fileCode = itoa(commitptr->code);
-                    write(historyStatus, fileCode, strlen(fileCode));
+                    if(commitptr->code == 1){
+                        write(historyStatus, "$A ", 3);
+                    }else if(commitptr->code == 3){
+                        write(historyStatus, "$R ", 3);
+                    }
+                    else if(commitptr->code == 2){
+                        write(historyStatus, "$M ", 3);
+                    }
                     char* fileVer = itoa(commitptr->version);
                     write(historyStatus, fileVer, strlen(fileVer));
                     write(historyStatus, " ", 1);
@@ -614,6 +620,7 @@ void push(char *projectName, int socket){
                     free(fileCode);
                     commitptr = commitptr->next;
                 }
+                write(historyStatus, "\n", 1);
                 
                 //Remove commit file - sent from the client
                 char* removeCommit = malloc(strlen(path)+12);
