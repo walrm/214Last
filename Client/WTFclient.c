@@ -115,7 +115,7 @@ char *computeLiveHash(Node *ptr, char *projectName)
  * @param totalBytes the total bytes to read from the fileDescriptor
  * @param projectName the name of the project that the commit/manifest file is for
  * @param isLocal 1 if the project is local, 0 otherwise
- * @param isManifestFile 1 if it is from a manifest file, 0 otherwise
+ * @param isManifestFile 1 if it is from a manifest file, 0 if it is a .Update, .Conflict, or .Commit file
  * @return the manifest file, with each file being held in a Node*
  */
 Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int isLocal, int isManifestFile)
@@ -215,9 +215,13 @@ Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int is
                 { //Add
                     ptr->code = 1;
                 }
-                else
+                else if (strcmp(name, "$R") == 0)
                 { //Remove
                     ptr->code = 3;
+                }
+                else
+                {
+                    ptr->code = 0;
                 }
                 free(name);
                 name = calloc(1, 1);
@@ -499,6 +503,7 @@ void destroy(char *projectName)
     }
     return;
 }
+
 /**
  * Gets the current project version and the current file version of all the files inside the project
  * 
@@ -761,6 +766,8 @@ void add(char *projectName, char *fileName)
  * If it does not exist in the .manifest, will print an error. 
  * The project needs to exist on the client, but the file does not. 
  * Does not connect to the server.
+ * @param projectName name of the project to search for file
+ * @param fileName Name of the file to delete
  * 
  */
 void removeFile(char *projectName, char *fileName)
@@ -785,7 +792,7 @@ void removeFile(char *projectName, char *fileName)
     memset(manifestPath, 0, 11 + strlen(projectName));
     strcat(manifestPath, projectName);
     strcat(manifestPath, "/.Manifest\0");
-    int manifestFD = open(manifestPath, O_RDWR | O_APPEND, 00777);
+    int manifestFD = open(manifestPath, O_RDWR, 00777);
     int bytesRead = 1;
     char *fileNameRead = malloc(2);
     memset(fileNameRead, 0, 2);
@@ -796,21 +803,17 @@ void removeFile(char *projectName, char *fileName)
     strcpy(filePath, projectName);
     strcat(filePath, "/");
     strcat(filePath, fileName);
-    printf("%s\n", filePath);
+    //printf("%s\n",filePath);
     while (bytesRead > 0)
     {
         bytesRead = read(manifestFD, fileNameRead, 1);
         if (readFile && fileNameRead[0] == ' ')
         {
-            printf("%s\n", totalBytesRead);
-            printf("%s\n", totalBytesRead);
+
             if (strcmp(totalBytesRead, fileName) == 0)
             {
-                printf("Warning, the file already exists in the manifest\n");
-                int wrOff = lseek(manifestFD, -5, SEEK_CUR);
-                printf("%d\n", wrOff);
-                lseek(manifestFD, wrOff, SEEK_SET);
-                write(manifestFD, "$R ", 3);
+                printf("File Removed\n");
+                write(manifestFD, "$R", 2);
                 close(manifestFD);
                 free(totalBytesRead);
                 free(filePath);
@@ -840,6 +843,7 @@ void removeFile(char *projectName, char *fileName)
             free(temp);
         }
     }
+    printf("File not found in manifest\n");
     close(manifestFD);
     free(totalBytesRead);
     free(fileNameRead);
@@ -870,11 +874,12 @@ int closeConnection(int serverFD)
     close(serverFD);
     printf("Connection closed \n");
 }
+
 /**
  * Helper method to get the total bytes to read for a file from the server
  * Reads until it finds a space, and then converts the char* to an int
  * @param socketFD the fileDescriptor for the socket
- * Returns the number of bytes for the file
+ * @return the number of bytes for the file
  */
 int getTotalBytes(int socketFD)
 {
@@ -1042,9 +1047,9 @@ void sendFile(int fileFD, int socketFD)
 {
     int fileSize = getFileSize(fileFD);
     char *fileSizeS = itoa(fileSize);
-    printf("%s\n",fileSizeS);
+    printf("%s\n", fileSizeS);
 
-    fileSizeS=addByteToString(fileSizeS," ");
+    fileSizeS = addByteToString(fileSizeS, " ");
     write(socketFD, fileSizeS, strlen(fileSizeS));
     free(fileSizeS);
     int bytesSent = 0;
@@ -1220,7 +1225,6 @@ void commit(char *projectName)
     close(clientManifestFD);
 }
 
-
 /**
  * TODO delete the .Commit file after push sucessful
  * 
@@ -1239,7 +1243,7 @@ void push(char *projectName)
         return;
     }
     char *commitFilePath = calloc(strlen(projectName) + strlen("/.Commit") + 1, 1);
-    sprintf(commitFilePath,"%s/.Commit",projectName);
+    sprintf(commitFilePath, "%s/.Commit", projectName);
     //Makes sure the commit file exists on the client
     if (access(commitFilePath, F_OK) == -1)
     {
@@ -1297,39 +1301,305 @@ void push(char *projectName)
     Manifest *commitMan = createManifestStruct(commitFD, commitSize, projectName, 0, 0);
     printf("Created Manifest Struct\n");
     Node *ptr = commitMan->files;
-    
+
     //Creates the system command to tar the files given the list of files that are changed/added
-    char *name = calloc(strlen("tar -czvf archive.tar.gz ")+1, 1);
-    strcat(name,"tar -czvf archive.tar.gz ");
+    char *name = calloc(strlen("tar -czvf archive.tar.gz ") + 1, 1);
+    strcat(name, "tar -czvf archive.tar.gz ");
     while (ptr != NULL)
     {
-        if (ptr->code!=3){
-            name=addByteToString(name,"./");
-            name=addByteToString(name,projectName);
-            name=addByteToString(name,"/");
-            name=addByteToString(name,ptr->fileName);
-            name=addByteToString(name," ");
+        if (ptr->code != 3)
+        {
+            name = addByteToString(name, "./");
+            name = addByteToString(name, projectName);
+            name = addByteToString(name, "/");
+            name = addByteToString(name, ptr->fileName);
+            name = addByteToString(name, " ");
         }
-        ptr=ptr->next;
+        ptr = ptr->next;
     }
-    int x=system(name);
+    int x = system(name);
     //sends the tarred file to the server
-    int tarFD=open("archive.tar.gz",O_RDONLY,00777);
-    sendFile(tarFD,socketFD);
+    int tarFD = open("archive.tar.gz", O_RDONLY, 00777);
+    sendFile(tarFD, socketFD);
     close(tarFD);
-    remove("archive.tar.gz");//deletes the tarred file
+    remove("archive.tar.gz"); //deletes the tarred file
     //updates the manifest
-    char* manifestPath=calloc(strlen("/.Manifest")+strlen(projectName)+1,1);
-    strcat(manifestPath,projectName);
-    strcat(manifestPath,"/.Manifest");
+    char *manifestPath = calloc(strlen("/.Manifest") + strlen(projectName) + 1, 1);
+    strcat(manifestPath, projectName);
+    strcat(manifestPath, "/.Manifest");
     remove(manifestPath);
-    int manifestSize=getTotalBytes(socketFD);
-    makeFile(socketFD,manifestPath,manifestSize);
-    int manifestFD=open(manifestPath,O_CREAT,O_RDWR,00777);
+    int manifestSize = getTotalBytes(socketFD);
+    makeFile(socketFD, manifestPath, manifestSize);
+    int manifestFD = open(manifestPath, O_CREAT, O_RDWR, 00777);
+    free(manifestPath);
     //HAVE TO DELETE .COMMIT FILE HERE
     closeConnection(socketFD);
 }
 
+void update(char *projectName)
+{
+    //Makes sure the directory does not exist on the client
+    DIR *dir = opendir(projectName);
+    if (dir)
+    {
+        closedir(dir);
+    }
+    else
+    {
+        printf("Error: Directory does not exist locally\n");
+        return;
+    }
+    //Connects with the server and sends the command and project name
+    int socketFD = checkConnection();
+    if (socketFD == -1)
+    {
+        return;
+    }
+    char *command = calloc(strlen("2") + strlen(projectName) + 1, 1);
+    strcat(command, "2");
+    strcat(command, projectName);
+    write(socketFD, command, strlen(command));
+    free(command);
+    char *status = calloc(2, 1);
+
+    //Makes sure the project exists on the server
+    read(socketFD, status, 1);
+    if (atoi(status) == 0)
+    {
+        printf("Project does not exist on the server\n");
+        free(status);
+        closeConnection(socketFD);
+    }
+    free(status);
+
+    //Creates the linked list for both manifest files
+    int serverManifestBytes = getTotalBytes(socketFD);
+    Manifest *serverMan = createManifestStruct(socketFD, serverManifestBytes, projectName, 0, 1);
+    int manifestFD = open(projectName, O_RDONLY);
+    int clientManifestBytes = getFileSize(manifestFD);
+    Manifest *clientMan = createManifestStruct(manifestFD, clientManifestBytes, projectName, 1, 1);
+    //Compares the manifest versions of the client and the server
+    if (clientMan->manifestVersion == serverMan->manifestVersion)
+    {
+        printf("Up to Date\n");
+        freeManifestStruct(serverMan);
+        freeManifestStruct(clientMan);
+        closeConnection(socketFD);
+        return;
+    }
+    //Gets the file descriptors of the .Update file and the .Conflict file
+    char *updateFilePath = calloc(strlen(projectName) + strlen("/.Update") + 1, 1);
+    char *conflictFilePath = calloc(strlen(projectName) + strlen("/.Conflict") + 1, 1);
+    sprintf(updateFilePath, "%s/.Update", projectName);
+    sprintf(conflictFilePath, "%s/.Conflict", projectName);
+    int updateFD = open(updateFilePath, O_RDWR | O_CREAT, 00777);
+    int conflictFD = open(conflictFilePath, O_RDWR | O_CREAT, 00777);
+    //Writes to the .Update and .Conflict files files
+    int isConflict = 0;
+    Node *serverPtr = serverMan->files;
+    Node *clientPtr = clientMan->files;
+    Node *clientPrev = NULL;
+    Node *serverPrev = NULL;
+    int fileFound;
+    while (clientPtr != NULL)
+    {
+        while (serverPtr != NULL)
+        {
+            if (strcmp(clientPtr->fileName, serverPtr->fileName) != 0)
+            {
+                if (strcmp(serverPtr->hash, clientPtr->hash) != 0)
+                {
+                    if (strcmp(clientPtr->hash, clientPtr->liveHash) != 0)
+                    {
+                        isConflict = 1;
+                        char *version = itoa(serverPtr->version);
+                        char *temp = calloc(strlen(clientPtr->fileName) + strlen(serverPtr->hash) + strlen("  $M ") + strlen(version) + 2, 1);
+                        sprintf(temp, "%s $M %s %s\n", clientPtr->fileName, version, serverPtr->hash);
+                        write(conflictFD, temp, strlen(temp));
+                        free(version);
+                        free(temp);
+                    }
+                    else
+                    {
+                        char *version = itoa(serverPtr->version);
+                        char *temp = calloc(strlen(clientPtr->fileName) + strlen(serverPtr->hash) + strlen("  $M ") + strlen(version) + 2, 1);
+                        sprintf(temp, "%s $M %s %s\n", clientPtr->fileName, version, serverPtr->hash);
+                        write(updateFD, temp, strlen(temp));
+                        free(version);
+                        free(temp);
+                    }
+                }
+                break;
+            }
+            else
+            {
+                serverPrev = serverPtr;
+                serverPtr = serverPtr->next;
+            }
+        }
+        if (serverPtr == NULL)
+        {
+            char *version = itoa(clientPtr->version);
+            char *temp = calloc(strlen(clientPtr->fileName) + strlen(clientPtr->hash) + strlen("  $M ") + strlen(version) + 2, 1);
+            sprintf(temp, "%s $D %s %s\n", clientPtr->fileName, version, clientPtr->hash);
+            write(updateFD, temp, strlen(temp));
+            free(version);
+            free(temp);
+        }
+        else
+        {
+            if (serverPrev == NULL)
+            {
+                serverMan->files = serverPtr->next;
+                free(serverPtr->fileName);
+                free(serverPtr->hash);
+                free(serverPtr->liveHash);
+                free(serverPtr);
+                //serverPtr=serverMan->files;
+            }
+            else
+            {
+                serverPrev->next = serverPtr->next;
+                free(serverPtr->fileName);
+                free(serverPtr->hash);
+                free(serverPtr->liveHash);
+                free(serverPtr);
+            }
+        }
+        clientPrev = clientPtr;
+        clientPtr = clientPtr->next;
+        serverPtr = serverMan->files;
+        serverPrev = NULL;
+    }
+    if (serverPtr != NULL)
+    {
+        while (serverPtr != NULL)
+        {
+            char *version = itoa(serverPtr->version);
+            char *temp = calloc(strlen(serverPtr->fileName) + strlen(serverPtr->hash) + strlen("  $M ") + strlen(version) + 2, 1);
+            sprintf(temp, "%s $A %s %s\n", serverPtr->fileName, version, serverPtr->hash);
+            write(updateFD, temp, strlen(temp));
+            free(version);
+            free(temp);
+            serverPtr = serverPtr->next;
+        }
+    }
+    close(conflictFD);
+    close(updateFD);
+    freeManifestStruct(clientMan);
+    freeManifestStruct(serverMan);
+    if (isConflict)
+    {
+        remove(updateFilePath);
+        conflictFD = open(conflictFilePath, O_RDONLY);
+        Manifest *conflictMan = createManifestStruct(conflictFD, getFileSize(conflictFD), projectName, 0, 0);
+        Node *conflictPtr = conflictMan->files;
+        while (conflictPtr != NULL)
+        {
+            printf("C %s", conflictPtr->fileName);
+        }
+        close(conflictFD);
+        freeManifestStruct(conflictMan);
+    }
+    else
+    {
+        updateFD = open(updateFilePath, O_RDONLY);
+        Manifest *updateMan = createManifestStruct(updateFD, getFileSize(updateFD), projectName, 0, 0);
+        Node *updatePtr = updateMan->files;
+        while (updatePtr != NULL)
+        {
+            switch (updatePtr->code)
+            {
+            case 1:
+                printf("A %s\n", updatePtr->fileName);
+                break;
+            case 2:
+                printf("M %s\n", updatePtr->fileName);
+                break;
+            case 3:
+                printf("D %s\n", updatePtr->fileName);
+            }
+        }
+        close(updateFD);
+        freeManifestStruct(updateMan);
+    }
+    free(updateFilePath);
+    free(conflictFilePath);
+    closeConnection(socketFD);
+}
+/**
+ * $M-File is changed 2
+ * $R-File is deleted 3
+ * $A-File is added 1
+ * 0-Create
+ * 
+ */
+
+void history(char *projectName)
+{
+    int socketFD = checkConnection();
+    if (socketFD == -1)
+    {
+        return;
+    }
+    char *command = calloc(strlen("8") + strlen(projectName), 1);
+    sprintf(command, "8%s", projectName);
+    write(socketFD, command, strlen(command));
+    char *status = calloc(2, 1);
+    read(socketFD, status, 1);
+    if (atoi(status) == 0)
+    {
+        printf("Project not found on the server\n");
+        free(status);
+        closeConnection(socketFD);
+    }
+    read(socketFD, status, 1);
+    if (atoi(status) == 0)
+    {
+        printf("No pushes have been done on the given project in the server");
+    }
+    int totalBytes = getTotalBytes(socketFD);
+    int bytesRead = 0;
+    while (bytesRead < totalBytes)
+    {
+        int bytesToRead = min(totalBytes - bytesRead, 250);
+        char *file = calloc(bytesToRead, 1);
+        bytesRead += read(socketFD, file, bytesToRead);
+        printf("%s", file);
+        free(file);
+    }
+    closeConnection(socketFD);
+    return;
+}
+
+void rollback(char *projectName, int version)
+{
+    int socketFD = checkConnection();
+    if (socketFD == -1)
+    {
+        return;
+    }
+    char *command = calloc(strlen("8") + strlen(projectName), 1);
+    sprintf(command, "8%s", projectName);
+    write(socketFD, command, strlen(command));
+    char *status = calloc(2, 1);
+    read(socketFD, status, 1);
+    if (atoi(status) == 0)
+    {
+        printf("Project not found on the server\n");
+        free(status);
+        closeConnection(socketFD);
+    }
+    read(socketFD, status, 1);
+    if (atoi(status) == 0)
+    {
+        printf("The current version of the project is lower then the version inputted");
+        free(status);
+        closeConnection(socketFD);
+        return;
+    }
+    free(status);
+}
 int main(int argc, char *argv[])
 {
     if (argc == 1 || argc == 2)
