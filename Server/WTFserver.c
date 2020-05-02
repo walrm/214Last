@@ -44,10 +44,19 @@ void pError(char *err)
 void stopServer(int sigNum)
 {
     printf("Closing Server Connection...\n");
-    close(socketfd);
-    close(newsocketfd);
+    shutdown(socketfd,2);
+    shutdown(newsocketfd,2);
     exit(0);
 }
+
+char *itoa(int num)
+{
+    int length = snprintf(NULL, 0, "%d", num);
+    char *str = calloc(length + 1, 1);
+    sprintf(str, "%d", num);
+    return str;
+}
+
 
 /**Adds the given byte to the end of the string
  * by freeing and reallocating memory to the string
@@ -281,6 +290,7 @@ Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int is
 
 void expireCommits(char *path)
 {
+    printf("PATH: %s\n" ,path);
     DIR *cwd = opendir(path);
     if (cwd == NULL)
     {
@@ -309,6 +319,7 @@ void expireCommits(char *path)
             }
         }
     } while (currentINode != NULL);
+    closedir(cwd);
 }
 
 //Search for matching commit file in the project,
@@ -326,7 +337,7 @@ int searchforCommit(char *path, int socket){
             if (strlen(currentINode->d_name) > 7 && strncmp(currentINode->d_name, ".Commit", 7) == 0 && strcmp(currentINode->d_name, ".Commit00") != 0){
                 printf("Found a Commit File\n");
 
-                char *difference = calloc(strlen(path) * 3 + strlen(currentINode->d_name) + 31, 1);
+                char *difference = malloc(29+strlen(path)*3 + strlen(currentINode->d_name)+1);
                 sprintf(difference, "diff %s/%s %s/.Commit > %s/.Commit00", path, currentINode->d_name, path, path);
                 printf("SYSTEM CALL: %s\n", difference);
                 int status = system(difference);
@@ -334,8 +345,7 @@ int searchforCommit(char *path, int socket){
 
                 char *checkFile = malloc(11 + strlen(path));
                 bzero(checkFile, sizeof(checkFile));
-                strcat(checkFile, path);
-                strcat(checkFile, "/.Commit00");
+                sprintf(checkFile, "%s/.Commit00", path);
                 int clientFD = open(checkFile, O_RDONLY);
                 free(checkFile);
 
@@ -357,14 +367,20 @@ int searchforCommit(char *path, int socket){
                     int manifestSize = manStats.st_size;
                     Manifest *man = createManifestStruct(manifestFD, manifestSize, "", 0, 1);
                     
-                    char* makeBackup = malloc(strlen(path)+17);
-                    system("mkdir ./%s/Backups");
-                    char* tarPath = malloc(11+strlen(path)+sizeof(man->manifestVersion)/4);
-                    sprintf(tarPath, "./%s/Backup/%d", path, man->manifestVersion);
+                    char* makeBackup = malloc(strlen(path)+9);
+                    sprintf(makeBackup, "%s/Backups", path);
+                    mkdir(makeBackup, 00777);
+
+                    char* version = itoa(man->manifestVersion);
+                    char* tarPath = malloc(10+strlen(path)+strlen(version));
+                    sprintf(tarPath, "%s/Backups/%s", path, version);
                     char* tarCall = malloc(19+strlen(tarPath)+strlen(path));
                     sprintf(tarCall, "tar -czvf %s.tar.gz %s", tarPath, path);
+                    system(tarCall);
+                    
                     free(tarPath);
                     free(tarCall);
+                    free(makeBackup);
 
                     char s[2];
                     char buffer[256];
@@ -394,9 +410,13 @@ int searchforCommit(char *path, int socket){
                     }
                     close(tarFD);
 
+                    free(manifestFile);
+                    close(clientFD);
+
                     //Write all files the client sent to project
                     int untarStatus = system("tar -xzf archive.tar.gz"); //untar the file
                     untarStatus = system("rm archive.tar.gz"); //remove the tar file
+
                     expireCommits(path); //Expire all other commits
 
                     return;
@@ -405,7 +425,7 @@ int searchforCommit(char *path, int socket){
                 //no commit file found - remove .commit00
                 char* removeDiff = malloc(strlen(path)+11);
                 sprintf(removeDiff, "%s/.Commit00", path);
-                int rmDiff = system(removeDiff);
+                system(removeDiff);
                 free(removeDiff);
             }
         }
@@ -440,6 +460,7 @@ void push(char *projectName, int socket){
 
                 char s[2];
                 char buffer[256];
+                bzero(buffer,256);
                 int totalBytes = 0, bytesRead = 0;
                 printf("reading bytes\n");
                 do{
@@ -470,7 +491,6 @@ void push(char *projectName, int socket){
                     possibleError(socket, "ERROR on malloc");
                     return;
                 }
-
                 sprintf(path, "./%s", projectName);
                 searchforCommit(path, socket);
 
@@ -521,10 +541,13 @@ void push(char *projectName, int socket){
                         strcpy(newFile->hash, commitptr->hash);
                         newFile->code = 0;
                         newFile->version = 0;
-
-                        Node* temp = manptr->next;
-                        manptr->next = newFile;
-                        manptr->next->next = temp;
+                        if(manptr == NULL){
+                            man->files = newFile;
+                        }else{
+                            Node* temp = manptr->next;
+                            manptr->next = newFile;
+                            manptr->next->next = temp;
+                        }
                     }
                     else{
                         //Update hash, code, version
@@ -571,22 +594,20 @@ void push(char *projectName, int socket){
                 free(historyFile);
                 
                 commitptr = commit->files;
+                write(historyStatus, manVersion, strlen(manVersion));
                 while(commitptr!= NULL){
-                    write(historyStatus, manVersion, strlen(manVersion));
                     write(historyStatus, commitptr->fileName, strlen(commitptr->fileName));
                     write(historyStatus, " ", 1);
-                    char* fileCode = malloc(sizeof(commitptr->code)/4+1);
-                    sprintf(fileCode, "%d", commitptr->code);
+                    char* fileCode = itoa(commitptr->code);
                     write(historyStatus, fileCode, strlen(fileCode));
-                    char* fileVer = malloc(sizeof(commitptr->version)/4+1);
-                    sprintf(fileVer, "%d", commitptr->version);
+                    char* fileVer = itoa(commitptr->version);
                     write(historyStatus, fileVer, strlen(fileVer));
                     write(historyStatus, " ", 1);
                     write(historyStatus, commitptr->hash, strlen(commitptr->hash));
                     write(historyStatus, "\n", 1);
-                    write(historyStatus, "\n", 1);
                     free(fileVer);
                     free(fileCode);
+                    commitptr = commitptr->next;
                 }
                 
                 //Remove commit file - sent from the client
@@ -604,7 +625,7 @@ void push(char *projectName, int socket){
                 int size = manStats.st_size; 
                 bytesRead = 0, bytesToRead = 0;
                 char manBuffer[256];
-                
+                bzero(manBuffer,256);
                 //Send size of manifest file to client
                 sprintf(manBuffer,"%d", size);
                 write(socket,manBuffer,strlen(manBuffer));
@@ -667,6 +688,7 @@ void update(char* projectName, int socket){
                 int size = manStats.st_size;
                 int bytesRead = 0, bytesToRead = 0;
                 char manBuffer[256];
+                bzero(manBuffer,256);
 
                 //Send size of manifest file to client
                 sprintf(manBuffer, "%d", size);
@@ -711,6 +733,7 @@ void upgrade(char* projectName, int socket){
                 
                 char s[2];
                 char buffer[256];
+                bzero(buffer,256);
                 int totalBytes = 0, bytesRead = 0;
                 printf("reading bytes\n");
                 do{
@@ -775,6 +798,7 @@ void upgrade(char* projectName, int socket){
                 write(socket, " ", 1);
                 
                 char tarBuffer[256];
+                bzero(tarBuffer, 256);
                 bytesRead = 0;
                 bytesToRead = 0;
                 while(tarStats.st_size> bytesRead){
@@ -824,6 +848,7 @@ void history(char* projectName, int socket){
                 int size = histStats.st_size;
                 int bytesRead = 0, bytesToRead = 0;
                 char buffer[256];
+                bzero(buffer,256);
 
                 //Send size of manifest file to client
                 sprintf(buffer, "%d", size);
@@ -854,6 +879,7 @@ void rollback(char* projectName, int socket){
 //Handles communication between the server and client socket
 void *clientServerInteract(void *socket_arg)
 {
+    
     int socket = *(int *)socket_arg;
     int status;
     char buffer[256];
@@ -932,6 +958,7 @@ void *clientServerInteract(void *socket_arg)
     }
     free(projectName);
     pthread_mutex_unlock(&lock);
+    // pthread_cancel(pthread_self());
 }
 
 int main(int argc, char *argv[])
@@ -941,6 +968,7 @@ int main(int argc, char *argv[])
 
     int port, pid, clilen;
     char buffer[256];
+    bzero(buffer,256);
     struct sockaddr_in serv_addr; //address info for server client
     struct sockaddr_in cli_addr;  //address info for client struct
 
@@ -990,6 +1018,7 @@ int main(int argc, char *argv[])
         {
             pError("ERROR on creating thread");
         }
+        pthread_join(threadID, NULL);
     }
     return 0;
 }

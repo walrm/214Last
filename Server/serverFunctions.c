@@ -430,6 +430,7 @@ void commit(char *projectName, int socket)
                 int size = manStats.st_size;
                 int bytesRead = 0, bytesToRead = 0;
                 char manBuffer[256];
+                bzero(manBuffer,256);
 
                 //Send size of manifest file to client
                 sprintf(manBuffer, "%d", size);
@@ -447,6 +448,7 @@ void commit(char *projectName, int socket)
                     printf("MANBUFFER:\n%s\n", manBuffer);
                     write(socket, manBuffer, bytesToRead);
                 }
+                bzero(manBuffer,256);
 
                 //Receive status and then receive commit file
                 int i = 0;
@@ -465,18 +467,19 @@ void commit(char *projectName, int socket)
                 //Read in commit file if success on client side
                 char *commit = malloc(strlen(projectName) + 13);
                 sprintf(commit, "./%s/.Commit%d", projectName, i);
-                int commitFD = open(commit, O_CREAT, 00777);
-                struct stat stat_record
-                while (!stat(commit, &stat_record))
+                int commitFD = open(commit, O_RDONLY);
+                while (commitFD > 0)
                 {
                     i++;
                     sprintf(commit, "./%s/.Commit%d", projectName, i);
-                    commitFD = open(commit, O_CREAT, 00777);
+                    commitFD = open(commit, O_RDONLY);
                 }
 
-                commitFD = open(commit, O_RDWR);
+                commitFD = open(commit, O_CREAT | O_RDWR, 00777);
+
                 char s[2];
                 char buffer[256];
+                bzero(buffer,256);
                 int totalBytes = 0;
                 bytesRead = 0;
 
@@ -486,6 +489,7 @@ void commit(char *projectName, int socket)
                     read(socket, s, 1);
                     if (s[0] != ' ')
                         strcat(buffer, s);
+                        printf("buffer: %s\n", buffer);
                 } while (s[0] != ' ');
 
                 totalBytes = atoi(buffer);
