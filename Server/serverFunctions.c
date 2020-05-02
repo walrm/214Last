@@ -466,7 +466,8 @@ void commit(char *projectName, int socket)
                 char *commit = malloc(strlen(projectName) + 13);
                 sprintf(commit, "./%s/.Commit%d", projectName, i);
                 int commitFD = open(commit, O_CREAT, 00777);
-                while (commitFD == -1)
+                struct stat stat_record
+                while (!stat(commit, &stat_record))
                 {
                     i++;
                     sprintf(commit, "./%s/.Commit%d", projectName, i);

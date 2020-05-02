@@ -742,6 +742,7 @@ void upgrade(char* projectName, int socket){
                     possibleError(socket, "ERROR reading history stats");
                     return;
                 }
+
                 Manifest* update = createManifestStruct(updateFD, updateStats.st_size, "", 0, 0);
                 Node* updateptr = update->files;
                 char* tar = malloc(24);
@@ -897,6 +898,14 @@ void *clientServerInteract(void *socket_arg)
     { //Checkout
         checkout(projectName, socket);
     }
+    else if (command == 1)
+    { //Update
+        update(projectName, socket);
+    }
+    else if (command == 2)
+    { //Upgrade
+        upgrade(projectName, socket);
+    }
     else if (command == 3)
     { //Commit
         commit(projectName, socket);
@@ -916,6 +925,10 @@ void *clientServerInteract(void *socket_arg)
     else if (command == 7)
     { //CurrentVersion
         currentVersion(projectName, socket);
+    }
+    else if (command == 8)
+    { //History
+        history(projectName, socket);
     }
     free(projectName);
     pthread_mutex_unlock(&lock);
