@@ -588,7 +588,7 @@ void push(char *projectName, int socket){
                         while (manptr->fileName!=NULL && strcmp(manptr->fileName, commitptr->fileName) != 0)
                             manptr = manptr->next;
                         free(manptr->hash);
-                        manptr->hash = calloc(strlen(commitptr->hash)+1,1);
+                        manptr->hash = malloc(strlen(commitptr->hash)+1);
                         strcpy(manptr->hash, commitptr->hash);
                         manptr->hash = commitptr->hash;
                         manptr->code = 0;
