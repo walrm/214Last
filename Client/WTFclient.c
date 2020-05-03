@@ -1302,6 +1302,7 @@ void push(char *projectName)
     int manifestFD = open(manifestPath, O_CREAT, O_RDWR, 00777);
     free(manifestPath);
     //HAVE TO DELETE .COMMIT FILE HERE
+    remove(commitFilePath);
     closeConnection(socketFD);
 }
 
@@ -1496,6 +1497,7 @@ void update(char *projectName)
     free(conflictFilePath);
     closeConnection(socketFD);
 }
+
 /**
  * $M-File is changed 2
  * $R-File is deleted 3
@@ -1635,6 +1637,7 @@ void upgrade(char *projectName)
     system("tar -xzf update.tar.gz");
 }
 
+
 void history(char *projectName)
 {
     int socketFD = checkConnection();
@@ -1642,9 +1645,10 @@ void history(char *projectName)
     {
         return;
     }
-    char *command = calloc(strlen("8") + strlen(projectName), 1);
+    char *command = calloc(strlen("8") + strlen(projectName)+1, 1);
     sprintf(command, "8%s", projectName);
     write(socketFD, command, strlen(command));
+    free(command);
     char *status = calloc(2, 1);
     read(socketFD, status, 1);
     if (atoi(status) == 0)
@@ -1658,12 +1662,14 @@ void history(char *projectName)
     {
         printf("No pushes have been done on the given project in the server");
     }
+    free(status);
     int totalBytes = getTotalBytes(socketFD);
+    printf("%d\n",totalBytes);
     int bytesRead = 0;
     while (bytesRead < totalBytes)
     {
         int bytesToRead = min(totalBytes - bytesRead, 250);
-        char *file = calloc(bytesToRead, 1);
+        char *file = calloc(bytesToRead+1, 1);
         bytesRead += read(socketFD, file, bytesToRead);
         printf("%s", file);
         free(file);
@@ -1744,6 +1750,7 @@ int main(int argc, char *argv[])
         }
         else if (strcmp("History", argv[1]) == 0)
         {
+            history(argv[2]);
         }
         else
         {
