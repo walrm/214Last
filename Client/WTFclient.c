@@ -1345,10 +1345,13 @@ void update(char *projectName)
     //Creates the linked list for both manifest files
     int serverManifestBytes = getTotalBytes(socketFD);
     Manifest *serverMan = createManifestStruct(socketFD, serverManifestBytes, projectName, 0, 1);
-    int manifestFD = open(projectName, O_RDONLY);
+    char* manifestPath=calloc(strlen(projectName)+strlen("/.Manifest")+1,1);
+    sprintf(manifestPath,"%s/.Manifest",projectName);
+    int manifestFD = open(manifestPath, O_RDONLY);
     int clientManifestBytes = getFileSize(manifestFD);
     Manifest *clientMan = createManifestStruct(manifestFD, clientManifestBytes, projectName, 1, 1);
     //Compares the manifest versions of the client and the server
+
     if (clientMan->manifestVersion == serverMan->manifestVersion)
     {
         printf("Up to Date\n");
@@ -1357,12 +1360,16 @@ void update(char *projectName)
         closeConnection(socketFD);
         return;
     }
+
     //Gets the file descriptors of the .Update file and the .Conflict file
     char *updateFilePath = calloc(strlen(projectName) + strlen("/.Update") + 1, 1);
     char *conflictFilePath = calloc(strlen(projectName) + strlen("/.Conflict") + 1, 1);
     sprintf(updateFilePath, "%s/.Update", projectName);
     sprintf(conflictFilePath, "%s/.Conflict", projectName);
     int updateFD = open(updateFilePath, O_RDWR | O_CREAT, 00777);
+    char* serverVersion=itoa(serverMan->manifestVersion);
+    write(updateFD,serverVersion,strlen(serverVersion));
+    write(updateFD,"\n",1);
     int conflictFD = open(conflictFilePath, O_RDWR | O_CREAT, 00777);
     //Writes to the .Update and .Conflict files files
     int isConflict = 0;
@@ -1375,7 +1382,7 @@ void update(char *projectName)
     {
         while (serverPtr != NULL)
         {
-            if (strcmp(clientPtr->fileName, serverPtr->fileName) != 0)
+            if (strcmp(clientPtr->fileName, serverPtr->fileName) == 0)
             {
                 if (strcmp(serverPtr->hash, clientPtr->hash) != 0)
                 {
@@ -1384,7 +1391,7 @@ void update(char *projectName)
                         isConflict = 1;
                         char *version = itoa(serverPtr->version);
                         char *temp = calloc(strlen(clientPtr->fileName) + strlen(serverPtr->hash) + strlen("  $M ") + strlen(version) + 2, 1);
-                        sprintf(temp, "%s $M %s %s\n", clientPtr->fileName, version, serverPtr->hash);
+                        sprintf(temp, "%s $C %s %s\n", clientPtr->fileName, version, serverPtr->hash);
                         write(conflictFD, temp, strlen(temp));
                         free(version);
                         free(temp);
@@ -1474,7 +1481,7 @@ void update(char *projectName)
     else
     {
         updateFD = open(updateFilePath, O_RDONLY);
-        Manifest *updateMan = createManifestStruct(updateFD, getFileSize(updateFD), projectName, 0, 0);
+        Manifest *updateMan = createManifestStruct(updateFD, getFileSize(updateFD), projectName, 0, 1);
         Node *updatePtr = updateMan->files;
         while (updatePtr != NULL)
         {
@@ -1489,6 +1496,7 @@ void update(char *projectName)
             case 3:
                 printf("D %s\n", updatePtr->fileName);
             }
+            updatePtr=updatePtr->next;
         }
         close(updateFD);
         freeManifestStruct(updateMan);
@@ -1560,9 +1568,8 @@ void upgrade(char *projectName)
     char *manifestFilePath = calloc(strlen(projectName) + strlen("/.Manifest") + 1, 1);
     sprintf(manifestFilePath, "%s/.Manifest", projectName);
     int manifestFD = open(manifestFilePath, O_RDONLY);
-    Manifest *update = createManifestStruct(updateFD, getFileSize(updateFD), "", 0, 0);
+    Manifest *update = createManifestStruct(updateFD, getFileSize(updateFD), "", 0, 1);
     Manifest *man = createManifestStruct(manifestFD, getFileSize(manifestFD), "", 0, 1);
-
     Node *commitptr = update->files;
     Node *manptr = man->files;
     man->manifestVersion++;
@@ -1610,10 +1617,10 @@ void upgrade(char *projectName)
     close(manifestFD);
     remove(manifestFilePath);
     manifestFD = open(manifestFilePath, O_CREAT | O_RDWR, 00777);
-    char *manVersion = malloc(sizeof(man->manifestVersion) / 4 + 1);
-    sprintf(manVersion, "%d\n", man->manifestVersion);
+    char* manVersion=itoa(update->manifestVersion);
     printf("new man version and length: %s,%d\n", manVersion, strlen(manVersion));
     write(manifestFD, manVersion, strlen(manVersion));
+    write(manifestFD,"\n",1);
     //Write out new manifest file
     while (manptr != NULL)
     {
