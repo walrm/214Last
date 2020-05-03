@@ -764,7 +764,6 @@ void add(char *projectName, char *fileName)
  * Does not connect to the server.
  * @param projectName name of the project to search for file
  * @param fileName Name of the file to delete
- * 
  */
 void removeFile(char *projectName, char *fileName)
 {
@@ -806,7 +805,7 @@ void removeFile(char *projectName, char *fileName)
         if (readFile && fileNameRead[0] == ' ')
         {
 
-            if (strcmp(totalBytesRead, fileName) == 0)
+            if (strcmp(totalBytesRead, filePath) == 0)
             {
                 printf("File Removed\n");
                 write(manifestFD, "$R", 2);
@@ -1498,6 +1497,7 @@ void update(char *projectName)
         close(updateFD);
         freeManifestStruct(updateMan);
     }
+    free(manifestPath);
     free(updateFilePath);
     free(conflictFilePath);
     closeConnection(socketFD);
@@ -1523,7 +1523,6 @@ void upgrade(char *projectName)
         printf("Error: Directory does not exist locally\n");
         return;
     }
-
     char *updateFilePath = calloc(strlen(projectName) + strlen("/.Update") + 1, 1);
     sprintf(updateFilePath, "%s/.Update", projectName);
 
@@ -1647,7 +1646,10 @@ void upgrade(char *projectName)
         system("tar -xzf update.tar.gz");
         remove("update.tar.gz");
     }
+    freeManifestStruct(update);
+    freeManifestStruct(man);
     remove(updateFilePath);
+    free(manifestFilePath);
     free(updateFilePath);
     closeConnection(socketFD);
 }
