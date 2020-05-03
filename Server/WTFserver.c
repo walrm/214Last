@@ -68,7 +68,8 @@ void freeFileStruct(Node *head)
     {
         freeFileStruct(head->next);
     }
-    free(head->fileName);
+    if(head->fileName != NULL)
+        free(head->fileName);
     free(head->hash);
     free(head->liveHash);
     free(head);
@@ -555,9 +556,9 @@ void push(char *projectName, int socket){
                 while (commitptr != NULL){
                     if (commitptr->code == 3){
                         //Remove file from the project
-                        while (strcmp(manptr->fileName, commitptr->fileName) != 0)
+                        while (manptr->fileName!=NULL && strcmp(manptr->fileName, commitptr->fileName) != 0)
                             manptr = manptr->next;
-                        manptr->fileName = "";
+                        manptr->fileName = NULL;
                         char *systemCall = malloc(strlen(commitptr->fileName) + 4);
                         sprintf(systemCall, "rm %s", commitptr->fileName);
                         int rmStatus = system(systemCall);
@@ -584,8 +585,11 @@ void push(char *projectName, int socket){
                     }
                     else{
                         //Update hash, code, version
-                        while (strcmp(manptr->fileName, commitptr->fileName) != 0)
+                        while (manptr->fileName!=NULL && strcmp(manptr->fileName, commitptr->fileName) != 0)
                             manptr = manptr->next;
+                        free(manptr->hash);
+                        manptr->hash = calloc(strlen(commitptr->hash)+1,1);
+                        strcpy(manptr->hash, commitptr->hash);
                         manptr->hash = commitptr->hash;
                         manptr->code = 0;
                         manptr->version++;
@@ -604,7 +608,7 @@ void push(char *projectName, int socket){
 
                 //Write out new manifest file
                 while (manptr != NULL){
-                    if (strlen(manptr->fileName) != 0){
+                    if (manptr->fileName != NULL){
                         write(manifestFD, manptr->fileName, strlen(manptr->fileName));
                         write(manifestFD, " ", 1);
                         write(manifestFD, "$N ", 3);
@@ -908,7 +912,7 @@ void rollback(char* projectName, int socket, char* version){
         }while(s[0] != '\n');
         close(manFD);
         int manVer = atoi(buffer);
-        if(manVer >= ver || manVer==0){
+        if(manVer <= ver || manVer==0){
             write(socket, "0", 1);
             closedir(cwd);
             free(projectPath);
@@ -944,6 +948,7 @@ void rollback(char* projectName, int socket, char* version){
         
         char* rm = malloc(8 + strlen(version));
         sprintf(rm, "%s.tar.gz", version);
+        system("rm .Commit");
         remove(rm);
         free(rm);
         
@@ -1078,10 +1083,10 @@ void *clientServerInteract(void *socket_arg)
         }
         printf("ROLLBACK VERSION: %s\n", version);
         
-        projectName = malloc(strlen(buffer)-strlen(version)-1);
+        projectName = malloc(strlen(buffer)-strlen(version)-2);
         memcpy(projectName, &buffer[i+1], strlen(buffer)-strlen(version)-3);
         projectName[strlen(projectName)] = '\0';
-        printf("project name: %s\n", projectName);
+        printf("project name: %saaa\n", projectName);
         rollback(projectName, socket, version);
         free(version);
         free(projectName);
