@@ -58,6 +58,28 @@ char *itoa(int num)
     return str;
 }
 
+void freeFileStruct(Node *head)
+{
+    if (head == NULL)
+    {
+        return;
+    }
+    if (head->next != NULL)
+    {
+        freeFileStruct(head->next);
+    }
+    free(head->fileName);
+    free(head->hash);
+    free(head->liveHash);
+    free(head);
+    head = NULL;
+}
+void freeManifestStruct(Manifest *man)
+{
+    if (man->files != NULL)
+        freeFileStruct(man->files);
+    free(man);
+}
 
 /**Adds the given byte to the end of the string
  * by freeing and reallocating memory to the string
@@ -71,7 +93,6 @@ char *addByteToString(char *str, char *byte)
     char *temp = calloc(strlen(str) + strlen(byte) + 1, 1);
     strcat(temp, str);
     strcat(temp, byte);
-    temp[strlen(temp)] = '\0';
     free(str);
     str = calloc(strlen(temp) + 1, 1);
     strcpy(str, temp);
@@ -169,6 +190,7 @@ Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int is
         //printf("BytesRead:%d\nBytesTotal:%d\n",bytesRead,totalBytes);
         if (gettingTotalBytes[0] == '\n')
         {
+            printf("awejfl\n");
             ptr->next = (Node *)malloc(sizeof(Node));
             ptr = ptr->next;
         }
@@ -250,6 +272,8 @@ Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int is
         {
             if (gettingTotalBytes[0] == '\n')
             {
+                boolean=1;
+                ptr->next=NULL;
                 readingName = 1;
                 readingHash = 0;
                 ptr->hash = calloc(strlen(name) + 1, 1);
@@ -352,8 +376,8 @@ int searchforCommit(char *path, int socket){
                 free(difference);
                 free(checkFile);
                 if (status == 0){
-                    printf("THIS IS THE FILE!\n");
                     write(socket, "1", 1); //write to client - commit file found
+                    expireCommits(path); //Expire all other commits
                     
                     //Create a tar of the previous project before for backups
                     char *manifestFile = malloc(strlen(path) + 11);
@@ -379,6 +403,7 @@ int searchforCommit(char *path, int socket){
                     sprintf(tarCall, "tar -czvf %s.tar.gz %s", tarPath, path);
                     system(tarCall);
                     
+                    freeManifestStruct(man);
                     free(tarPath);
                     free(tarCall);
                     free(makeBackup);
@@ -413,24 +438,20 @@ int searchforCommit(char *path, int socket){
                     closedir(cwd);
                     free(manifestFile);
                     close(clientFD);
+                    close(manifestFD);
 
                     //Write all files the client sent to project
-                    int untarStatus = system("tar -xzf archive.tar.gz"); //untar the file
+                    int untarStatus = system("tar -xzf archive.tar.gz"); //untar the file)
                     untarStatus = system("rm archive.tar.gz"); //remove the tar file
 
-                    expireCommits(path); //Expire all other commits
                     return;
                 }
-
-                //no commit file found - remove .commit00
-                char* removeDiff = malloc(strlen(path)+11);
-                sprintf(removeDiff, "%s/.Commit00", path);
-                system(removeDiff);
-                free(removeDiff);
+                close(clientFD);
             }
         }
     } while (currentINode != NULL);
     write(socket, "0", 1);
+    closedir(cwd);
     return 0;
 }
 
@@ -573,7 +594,6 @@ void push(char *projectName, int socket){
                 manifestFD = open(manifestFile, O_CREAT | O_RDWR, 00777);
                 char *manVersion = malloc(sizeof(man->manifestVersion) / 4 + 1);
                 sprintf(manVersion, "%d\n", man->manifestVersion);
-                printf("new man version and length: %s,%d\n", manVersion, strlen(manVersion));
                 write(manifestFD, manVersion, strlen(manVersion));
 
                 //Write out new manifest file
@@ -617,15 +637,15 @@ void push(char *projectName, int socket){
                     write(historyStatus, commitptr->hash, strlen(commitptr->hash));
                     write(historyStatus, "\n", 1);
                     free(fileVer);
-                    free(fileCode);
                     commitptr = commitptr->next;
                 }
                 write(historyStatus, "\n", 1);
                 
                 //Remove commit file - sent from the client
+                close(commitFD);
                 char* removeCommit = malloc(strlen(path)+12);
                 sprintf(removeCommit, "rm %s/.Commit",path);
-                int rmCommit = system(removeCommit); 
+                system(removeCommit); 
                 free(removeCommit);
 
                 manifestFD = open(manifestFile, O_RDONLY);
@@ -654,16 +674,19 @@ void push(char *projectName, int socket){
                     write(socket,manBuffer,bytesToRead);
                 }
                 
-                //TODO: free the two structs
+                // freeManifestStruct(man);
+                // freeManifestStruct(commit);
+                printf("free?\n");
                 close(manifestFD);
                 free(manVersion);
-                close(commitFD);
                 free(manifestFile);
                 free(commitFile);
+                closedir(cwd);
                 return;
             }
         }
     } while (currentINode != NULL); //project doesn't exist
+    closedir(cwd);
 }
 
 void update(char* projectName, int socket){
@@ -718,12 +741,17 @@ void update(char* projectName, int socket){
                     printf("MANBUFFER:\n%s\n", manBuffer);
                     write(socket, manBuffer, bytesToRead);
                 }
+
+                free(manifest);
+                close(manifestFD);
+                closedir(cwd);
+                return;
             }
         }
     }while(currentINode!= NULL);
     write(socket, "0", 1); //write to client - project not found
+    closedir(cwd);
 }
-
 
 void upgrade(char* projectName, int socket){
     DIR *cwd = opendir("./");
@@ -762,7 +790,8 @@ void upgrade(char* projectName, int socket){
                 char* updateFile = malloc(strlen(projectName)+11);
                 sprintf(updateFile, "./%s/.Update", projectName);
                 int updateFD = open(updateFile, O_CREAT | O_RDWR, 00777);
-                int bytesToRead = 0;
+                int bytesToRead = 0;    
+
                 //write out update file from client
                 while (bytesRead < totalBytes){
                     bytesToRead = (totalBytes - bytesRead < 256) ? totalBytes - bytesRead : 255;
@@ -778,15 +807,18 @@ void upgrade(char* projectName, int socket){
                     return;
                 }
 
-                Manifest* update = createManifestStruct(updateFD, updateStats.st_size, "", 0, 0);
+                close(updateFD);
+                updateFD = open(updateFile, O_RDONLY);
+                Manifest* update = createManifestStruct(updateFD, updateStats.st_size,"", 0, 1);
                 Node* updateptr = update->files;
-                char* tar = malloc(24);
-                sprintf(tar, "tar -czvf update.tar.gz ");
+                char* tar = calloc(25,1);
+                strcat(tar,"tar -czvf update.tar.gz " );
                 while(updateptr != NULL){
                     if(updateptr->code == 3)
                         continue;
-                    tar = (char*) realloc(tar, strlen(tar)+strlen(updateptr->fileName)+1);
-                    sprintf(tar, "%s ", updateptr->fileName);
+                    tar = addByteToString(tar, updateptr->fileName);
+                    tar = addByteToString(tar, " ");
+                    updateptr = updateptr->next;
                 }
 
                 if(system(tar)<0){
@@ -797,7 +829,7 @@ void upgrade(char* projectName, int socket){
                 int tarFD = open("update.tar.gz", O_RDONLY);
 
                 struct stat tarStats;
-                if(stat(tar,&tarStats)){
+                if(stat("update.tar.gz",&tarStats)){
                     possibleError("ERROR on reading tar stats");
                     return;
                 }
@@ -819,73 +851,135 @@ void upgrade(char* projectName, int socket){
                     bytesRead += read(tarFD,tarBuffer,bytesToRead);
                     write(socket,tarBuffer,bytesToRead);
                 }
+
+                free(updateFile);
+                close(updateFD);
+                close(tarFD);
+                freeManifestStruct(update);
+                free(tar);
+                free(tarSize);
+                closedir(cwd);
                 return;
             }
         }
     }while(currentINode!= NULL);
     write(socket, "0", 1); //write to client - project not found
+    closedir(cwd);
 }
 
-void history(char* projectName, int socket){
-    DIR *cwd = opendir("./");
-    struct dirent *currentINode = NULL;
-    if(cwd == NULL){
-        possibleError(socket,"ERROR on opening directory");
-        return;
-    }
 
-    do{
-        currentINode = readdir(cwd);
-        if(currentINode!=NULL && currentINode->d_type == DT_DIR){
-            if (strcmp(currentINode->d_name, ".") == 0 || strcmp(currentINode->d_name, "..") == 0)
-                    continue;
+void rollback(char* projectName, int socket, char* version){
+    char* projectPath = malloc(strlen(projectName)+3);
+    sprintf(projectPath, "./%s",projectName);
+    DIR * cwd = opendir(projectPath);
+    if(cwd){
+        write(socket,"1",1);
 
-            //Project found, writing manifest data to socket
-            if(strcmp(currentINode->d_name,projectName)==0){
-                write(socket,"1",1); //send to client that project was found
-                
-                //send history file to client
-                char* historyFile = malloc(strlen(projectName)+12);
-                sprintf(historyFile, "./%s/.History",projectName);
-                int historyFD = open(historyFile, O_RDONLY);
-
-                //Use stats to read total bytes of history file
-                struct stat histStats;
-                if (stat(historyFile, &histStats) < 0)
-                {
-                    possibleError(socket, "ERROR reading history stats");
-                    return;
-                }
-
-                int size = histStats.st_size;
-                int bytesRead = 0, bytesToRead = 0;
-                char buffer[256];
-                bzero(buffer,256);
-
-                //Send size of manifest file to client
-                sprintf(buffer, "%d", size);
-                write(socket, buffer, strlen(buffer));
-                write(socket, " ", 1);
-                printf("buffer: %s\n", buffer);
-                printf("buffer size: %d\n", strlen(buffer));
-
-                //Send manifest bytes to client
-                while (size > bytesRead)
-                {
-                    bytesToRead = (size - bytesRead < 256) ? size - bytesRead : 255;
-                    bzero(buffer, 256);
-                    bytesRead += read(historyFD, buffer, bytesToRead);
-                    printf("BUFFER:\n%s\n", buffer);
-                    write(socket, buffer, bytesToRead);
-                }
-            }
+        //Search for backup with version number
+        char* backup = malloc(17 + strlen(projectPath) + strlen(version));
+        sprintf(backup, "%s/Backups/%s.tar.gz", projectPath, version);
+        
+        int tarFD = open(backup, O_RDWR);
+        if(tarFD < 0){
+            write(socket,"0",1);
+            return;
         }
-    }while(currentINode!= NULL);
-    write(socket, "0", 1); //write to client - project not found
+        
+        char* sys = malloc(12 + strlen(backup) + strlen(version));
+        sprintf(sys, "cp %s %s.tar.gz", backup, version);
+        system(sys);
+        free(sys);
+        
+        close(tarFD);
+        closedir(cwd);
+        free(backup);
+
+        destroyProject(projectPath,socket);
+        char* untar = malloc(18 + strlen(version));
+        sprintf(untar, "tar -xzf %s.tar.gz", version);
+        system(untar);
+        free(untar);
+        
+        char* rm = malloc(8 + strlen(version));
+        sprintf(rm, "%s.tar.gz", version);
+        remove(rm);
+        free(rm);
+
+    }else{
+        write(socket,"0",1);
+    }
+    free(projectPath);
 }
 
-void rollback(char* projectName, int socket){
-    
+//Send project and all its files to the client
+void checkout(char* projectName, int socket){
+    char* projectPath = malloc(strlen(projectName)+3);
+    sprintf(projectPath, "./%s",projectName);
+    DIR * cwd = opendir(projectPath);
+    if(cwd){
+        write(socket, "1", 1);
+
+        char* manifest = malloc(strlen(projectName) + 13);
+        sprintf(manifest, "./%s/.Manifest", projectName);
+
+        struct stat manStats;
+        if (stat(manifest, &manStats) < 0){
+            possibleError(socket, "ERROR reading manifest stats");
+            return;
+        }
+
+        int manFD = open(manifest, O_RDONLY);
+        Manifest* man = createManifestStruct(manFD, manStats.st_size, "", 0, 1);
+        Node* manptr = man->files;
+        char* tar = malloc(27);
+        sprintf(tar, "tar -czvf checkout.tar.gz ");
+        while(manptr != NULL){
+            tar = addByteToString(tar, manptr->fileName);
+            tar = addByteToString(tar, " ");
+            manptr = manptr->next;
+        }
+        tar = addByteToString(tar, projectPath);
+        tar = addByteToString(tar, "/.Manifest");
+        free(manptr);
+
+        if(system(tar)<0){
+            possibleError("ERROR in creating tar file");
+            return;
+        }
+
+        int tarFD = open("checkout.tar.gz", O_RDONLY);
+        struct stat tarStats;
+        if (stat("checkout.tar.gz", &tarStats) < 0){
+            possibleError(socket, "ERROR reading tar stats");
+            return;
+        }
+
+        char* tarSize = itoa(tarStats.st_size);
+        write(socket, tarSize, strlen(tarSize));
+        write(socket, " ", 1);
+        char buffer[256];
+        int bytesToRead = 0, bytesRead = 0;
+
+        while (tarStats.st_size > bytesRead)
+        {
+            bytesToRead = (tarStats.st_size - bytesRead < 256) ? tarStats.st_size - bytesRead : 255;
+            bzero(buffer, 256);
+            bytesRead += read(tarFD, buffer, bytesToRead);
+            printf("BUFFER:\n%s\n", buffer);
+            write(socket, buffer, bytesToRead);
+        }
+        
+        close(tarFD);
+        remove("checkout.tar.gz");
+        closedir(cwd);
+        free(tar);
+        free(manifest);
+        close(manFD);
+        freeManifestStruct(man);
+    }else{
+        write(socket, "0", 1);
+    }
+    free(projectPath);
 }
 
 //Handles communication between the server and client socket
@@ -930,6 +1024,22 @@ void *clientServerInteract(void *socket_arg)
         memcpy(projectName, &buffer[1], strlen(buffer));
         projectName[strlen(projectName)] = '\0';
         printf("Project Name: %s\n", projectName);
+    }else if(command == 9){
+        int i = 1;
+        char* version = "";
+        while(buffer[i] != ' '){
+            version = calloc(strlen(version)+1,1);
+            sprintf(version, "%s%c", version, buffer[i]);
+            i++;
+        }
+        printf("ROLLBACK VERSION: %s\n", version);
+        
+        projectName = malloc(strlen(buffer)-strlen(version)-1);
+        memcpy(projectName, &buffer[i+1], strlen(buffer)-strlen(version)-3);
+        projectName[strlen(projectName)] = '\0';
+        printf("project name: %saaaa\n", projectName);
+        rollback(projectName, socket, version);
+        return;
     }
 
     if (command == 0)
