@@ -1,6 +1,7 @@
 {
     "files.associations": {
         "dirent.h": "c",
-        "socket.h": "c"
+        "socket.h": "c",
+        "*.tcc": "c"
     }
 }
