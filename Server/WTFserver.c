@@ -1058,6 +1058,8 @@ void *clientServerInteract(void *socket_arg)
         projectName[strlen(projectName)] = '\0';
         printf("project name: %saaaa\n", projectName);
         rollback(projectName, socket, version);
+        free(version);
+        free(projectName);
         return;
     }
 
