@@ -12,6 +12,7 @@
 #include <math.h>
 #include <dirent.h>
 #include <errno.h>
+
 /**
  * $M-File is changed 2
  * $R-File is deleted 3
@@ -87,8 +88,6 @@ char *computeLiveHash(Node *ptr, char *projectName)
 {
     unsigned char result[MD5_DIGEST_LENGTH];
     char *filePath = calloc(strlen(projectName) + strlen(ptr->fileName) + 2, 1);
-    strcat(filePath, projectName);
-    strcat(filePath, "/");
     strcat(filePath, ptr->fileName);
     int fd = open(filePath, O_RDWR, 00777);
     int fileSize = getFileSize(fd);
@@ -143,7 +142,6 @@ Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int is
     {
         man->manifestVersion = -1;
     }
-
     char *gettingTotalBytes = calloc(2, 1);
     gettingTotalBytes[1] = '\0';
     char *name = calloc(1, 1);
@@ -255,6 +253,8 @@ Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int is
             {
                 readingName = 1;
                 readingHash = 0;
+                boolean=1;
+                ptr->next=NULL;
                 ptr->hash = calloc(strlen(name) + 1, 1);
                 strcpy(ptr->hash, name);
                 if (isLocal && ptr->code != 3)
@@ -747,6 +747,8 @@ void add(char *projectName, char *fileName)
     {
         sprintf(&str[i * 2], "%02x", (unsigned int)result[i]);
     }
+    write(manifestFD,projectName,strlen(projectName));
+    write(manifestFD,"/",1);
     write(manifestFD, fileName, strlen(fileName));
     write(manifestFD, " $A ", 4);
     write(manifestFD, "0 ", 2);
@@ -1000,41 +1002,11 @@ void checkout(char *projectName)
     free(command);
     free(reads);
     //Creates the directory for the client
-    mkdir(projectName, 00777);
-    //directory:3 length of directory space name
-    //file:4 size of file space file
-    //5: exits the directory
-    int code = 0;
-    char *codeS = calloc(2, 1);
-    codeS[1] = '\0';
-    read(socketFD, codeS, 1);
-    code = atoi(codeS);
-    printf("Code at Begginning:%s\n", codeS);
-    while (code != 5)
-    {
-        //printf("Code:%d\n",code);
-
-        if (code == 4)
-        {
-            int totalFileBytes = getTotalBytes(socketFD);
-            char *nameOfFile = getFileName(socketFD);
-            printf("Name of File:%s\n", nameOfFile);
-            makeFile(socketFD, nameOfFile, totalFileBytes);
-            free(nameOfFile);
-        }
-        else if (code == 3)
-        {
-            char *nameOfDirectory = getFileName(socketFD);
-            printf("Name of Directory:%s\n", nameOfDirectory);
-            mkdir(nameOfDirectory, 00777);
-            free(nameOfDirectory);
-        }
-
-        read(socketFD, codeS, 1);
-        code = atoi(codeS);
-    }
+    int tarFileBytes=getTotalBytes(socketFD);
+    makeFile(socketFD,"checkout.tar.gz",tarFileBytes);
+    system("tar -xzf checkout.tar.gz");
+    remove("checkout.tar.gz");
     closeConnection(socketFD);
-    free(codeS);
 }
 
 /**
@@ -1309,9 +1281,6 @@ void push(char *projectName)
     {
         if (ptr->code != 3)
         {
-            name = addByteToString(name, "./");
-            name = addByteToString(name, projectName);
-            name = addByteToString(name, "/");
             name = addByteToString(name, ptr->fileName);
             name = addByteToString(name, " ");
         }
@@ -1703,15 +1672,15 @@ void history(char *projectName)
     return;
 }
 
-void rollback(char *projectName, int version)
+void rollback(char *projectName, char* ver)
 {
     int socketFD = checkConnection();
     if (socketFD == -1)
     {
         return;
     }
-    char *command = calloc(strlen("8") + strlen(projectName), 1);
-    sprintf(command, "8%s", projectName);
+    char *command = calloc(strlen("8") + strlen(projectName)+strlen(ver)+2, 1);
+    sprintf(command, "9%s %s ", ver,projectName);
     write(socketFD, command, strlen(command));
     char *status = calloc(2, 1);
     read(socketFD, status, 1);
@@ -1747,9 +1716,11 @@ int main(int argc, char *argv[])
         }
         else if (strcmp("Update", argv[1]) == 0)
         {
+            update(argv[2]);
         }
         else if (strcmp("Upgrade", argv[1]) == 0)
         {
+            upgrade(argv[2]);
         }
         else if (strcmp("Commit", argv[1]) == 0)
         {
@@ -1797,6 +1768,7 @@ int main(int argc, char *argv[])
         }
         else if (strcmp("Rollback", argv[1]) == 0)
         {
+                rollback(argv[2],argv[3]);
         }
         else
         {
