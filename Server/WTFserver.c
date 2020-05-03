@@ -890,6 +890,31 @@ void rollback(char* projectName, int socket, char* version){
     DIR * cwd = opendir(projectPath);
     if(cwd){
         write(socket,"1",1);
+        
+        int ver = atoi(version);
+        char* man = malloc(11 + strlen(projectPath));
+        sprintf(man, "%s/.Manifest", projectPath);
+        int manFD = open(man, O_RDONLY);
+        free(man);
+        char s[2];
+        char buffer[10];
+        bzero(buffer,10);
+        do{
+            read(manFD, s, 1);
+            if(s[0] != '\n'){
+                strcat(buffer,s);
+                printf("buffer: %s\n", buffer);
+            }
+        }while(s[0] != '\n');
+        close(manFD);
+        int manVer = atoi(buffer);
+        if(manVer >= ver || manVer==0){
+            write(socket, "0", 1);
+            closedir(cwd);
+            free(projectPath);
+            return;
+        }
+        write(socket, "1", 1);
 
         //Search for backup with version number
         char* backup = malloc(17 + strlen(projectPath) + strlen(version));
@@ -1056,7 +1081,7 @@ void *clientServerInteract(void *socket_arg)
         projectName = malloc(strlen(buffer)-strlen(version)-1);
         memcpy(projectName, &buffer[i+1], strlen(buffer)-strlen(version)-3);
         projectName[strlen(projectName)] = '\0';
-        printf("project name: %saaaa\n", projectName);
+        printf("project name: %s\n", projectName);
         rollback(projectName, socket, version);
         free(version);
         free(projectName);
