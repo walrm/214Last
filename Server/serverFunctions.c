@@ -470,3 +470,69 @@ void history(char* projectName, int socket){
     write(socket, "0", 1); //write to client - project not found
     closedir(cwd);
 }
+
+//Sends server's manifest to the client so they can figure out what to update
+void update(char* projectName, int socket){
+    DIR *cwd = opendir("./");
+    struct dirent *currentINode = NULL;
+    if(cwd == NULL){
+        possibleError(socket,"ERROR on opening directory");
+        return;
+    }
+
+    do{
+        currentINode = readdir(cwd);
+        if(currentINode!=NULL && currentINode->d_type == DT_DIR){
+            if (strcmp(currentINode->d_name, ".") == 0 || strcmp(currentINode->d_name, "..") == 0)
+                    continue;
+
+            //Project found, writing manifest data to socket
+            if(strcmp(currentINode->d_name,projectName)==0){
+                write(socket,"1",1); //send to client that project was found
+                
+                //send manifest file to client
+                char* manifest = malloc(strlen(projectName)+13);
+                sprintf(manifest, "./%s/.Manifest",projectName);
+                int manifestFD = open(manifest, O_RDONLY);
+
+                //Use stats to read total bytes of manifest file
+                struct stat manStats;
+                if (stat(manifest, &manStats) < 0)
+                {
+                    possibleError(socket, "ERROR reading manifest stats");
+                    return;
+                }
+
+                int size = manStats.st_size;
+                int bytesRead = 0, bytesToRead = 0;
+                char manBuffer[256];
+                bzero(manBuffer,256);
+
+                //Send size of manifest file to client
+                sprintf(manBuffer, "%d", size);
+                write(socket, manBuffer, strlen(manBuffer));
+                write(socket, " ", 1);
+                printf("manBuffer: %s\n", manBuffer);
+                printf("manBuffer size: %d\n", strlen(manBuffer));
+
+                //Send manifest bytes to client
+                while (size > bytesRead)
+                {
+                    bytesToRead = (size - bytesRead < 256) ? size - bytesRead : 255;
+                    bzero(manBuffer, 256);
+                    bytesRead += read(manifestFD, manBuffer, bytesToRead);
+                    printf("MANBUFFER:\n%s\n", manBuffer);
+                    write(socket, manBuffer, bytesToRead);
+                }
+
+                free(manifest);
+                close(manifestFD);
+                closedir(cwd);
+                return;
+            }
+        }
+    }while(currentINode!= NULL);
+    write(socket, "0", 1); //write to client - project not found
+    closedir(cwd);
+}
+
