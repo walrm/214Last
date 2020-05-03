@@ -36,7 +36,6 @@ void create(char* projectName, int socket){
 
         }
     }while(currentINode!=NULL); //project doesn't exist
-    
     //Creates project with parameter projectName and create the project's manifest file
     if(mkdir(projectName,00777)<0){
         possibleError(socket,"ERROR on creating directory");

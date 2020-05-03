@@ -114,12 +114,12 @@ char *computeLiveHash(Node *ptr, char *projectName)
  * @param totalBytes the total bytes to read from the fileDescriptor
  * @param projectName the name of the project that the commit/manifest file is for
  * @param isLocal 1 if the project is local, 0 otherwise
- * @param isManifestFile 1 if it is from a manifest file, 0 if it is a .Update, .Conflict, or .Commit file
+ * @param isManifestFile 1 if it is from a .Manifest file or a .Update file, 0 if it is a .Conflict, or .Commit file
  * @return the manifest file, with each file being held in a Node*
  */
 Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int isLocal, int isManifestFile)
 {
-    printf("Creating Manifest Struct\n");
+    //printf("Creating Manifest Struct\n");
     Manifest *man = (Manifest *)malloc(sizeof(Manifest));
     int bytesRead = 0;
     char *s = calloc(2, 1);
@@ -213,8 +213,9 @@ Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int is
                 { //Add
                     ptr->code = 1;
                 }
-                else if (strcmp(name, "$R") == 0)
+                else if (strcmp(name, "$R") == 0 || strcmp(name, "$D") == 0)
                 { //Remove
+                    printf("here\n");
                     ptr->code = 3;
                 }
                 else
@@ -253,8 +254,8 @@ Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int is
             {
                 readingName = 1;
                 readingHash = 0;
-                boolean=1;
-                ptr->next=NULL;
+                boolean = 1;
+                ptr->next = NULL;
                 ptr->hash = calloc(strlen(name) + 1, 1);
                 strcpy(ptr->hash, name);
                 if (isLocal && ptr->code != 3)
@@ -339,13 +340,13 @@ int checkConnection()
     }
     int configFD = open(".configure", O_RDONLY);
     int size = getFileSize(configFD);
-    char *fileInfo = (char *)malloc(size + 1);
+    char *fileInfo =calloc(size + 1,1);
+    //fileInfo="";
     read(configFD, fileInfo, size);
     char *space = strchr(fileInfo, ' ');
     int spacel = space - fileInfo;
-    char *ip = (char *)malloc(spacel + 1);
-    char *host = (char *)malloc(size - spacel + 1);
-
+    char *ip = (char *)calloc(spacel + 1,1);
+    char *host = (char *)calloc(size - spacel +1,1);
     memcpy(ip, &fileInfo[0], spacel);
     memcpy(host, &fileInfo[spacel + 1], size - spacel + 1);
 
@@ -385,9 +386,10 @@ int checkConnection()
         return -1;
     }
     write(sockfd, "Established Connection", 22);
-    char reading[23];
+    char* reading=calloc(23,1);
     read(sockfd, reading, 22);
     printf("%s\n", reading);
+    free(reading);
     free(fileInfo);
     free(ip);
     free(host);
@@ -407,16 +409,15 @@ void create(char *projectName)
         return;
     }
 
-    int writeLen = 1 + strlen(projectName);
-    char *combined = malloc(writeLen);
-    memset(combined, 0, 7);
+    char *combined = calloc(strlen(projectName)+1,1);
     strcat(combined, "5");
     strcat(combined, projectName);
-    write(socketFD, combined, writeLen);
-    char created[1];
+    write(socketFD, combined, strlen(combined));
+    char* created=calloc(2,1);
 
     read(socketFD, created, 1);
     int c = atoi(created);
+    free(created);
     if (!c)
     {
         closeConnection(socketFD);
@@ -480,27 +481,25 @@ void destroy(char *projectName)
     {
         return;
     }
-    int prLen = strlen(projectName) + 1;
-    //write(serverFD, ("6%s", projectName), (1 + prLen));
-    char *combined = malloc(prLen);
-    memset(combined, 0, 7);
+    char *combined = calloc(strlen(projectName)+2,1);
     strcat(combined, "6");
     strcat(combined, projectName);
-    write(serverFD, combined, prLen);
-
-    char passC[1];
+    write(serverFD, combined, strlen(combined));
+    free(combined);
+    char* passC=calloc(2,1);
+    //passC="";
     read(serverFD, passC, 1);
-    printf("PASSC: %s\n", passC);
     int pass = atoi(passC);
-    printf("PASS: %d\n", pass);
+    free(passC);
     if (pass == 0)
     {
         printf("Project does not exist in the server\n");
     }
     else if (pass == 1)
     {
-        printf("Project successfully defeated\n");
+        printf("Project successfully deleted\n");
     }
+    closeConnection(serverFD);
     return;
 }
 
@@ -520,7 +519,7 @@ void currentVersion(char *projectName)
     strcat(command, "7");
     strcat(command, projectName);
     write(socketFD, command, strlen(command));
-    printf("%s\n", command);
+    free(command);
     char created[1];
     read(socketFD, created, 1);
     int c = atoi(created);
@@ -529,7 +528,7 @@ void currentVersion(char *projectName)
         printf("Project does not exist on the server\n");
         return;
     }
-    char *gettingTotalBytes = malloc(1);
+    char *gettingTotalBytes = calloc(2,1);
     char *i = malloc(10);
     bzero(i, 10);
     //Getting the total size of the file
@@ -542,19 +541,16 @@ void currentVersion(char *projectName)
         }
     } while (gettingTotalBytes[0] != ' ');
     int totalBytes = atoi(i);
-    printf("Total Bytes: %d\n", totalBytes);
     int bytesRead = 0;
     int isFirstLine = 1;
     char *byteRead = malloc(1);
     char *projectVersion = malloc(10);
-    bzero(byteRead, 1);
     bzero(projectVersion, 10);
     //Getting the project version
     while (isFirstLine)
     {
         free(byteRead);
-        byteRead = malloc(1);
-        bzero(byteRead, 1);
+        byteRead = calloc(2,1);
         bytesRead += read(socketFD, byteRead, 1);
         if (byteRead[0] == '\n')
         {
@@ -638,10 +634,8 @@ void currentVersion(char *projectName)
     free(projectVersion);
     free(byteRead);
     free(i);
-    free(command);
     free(versionName);
     free(fileName);
-    free(versionName);
     free(fileByteRead);
     free(gettingTotalBytes);
     close(socketFD);
@@ -699,7 +693,7 @@ void add(char *projectName, char *fileName)
         bytesRead = read(manifestFD, fileNameRead, 1);
         if (readFile && fileNameRead[0] == ' ')
         {
-            if (strcmp(totalBytesRead, fileName) == 0)
+            if (strcmp(totalBytesRead, filePath) == 0)
             {
                 printf("Warning, the file already exists in the manifest\n");
                 close(manifestFD);
@@ -747,8 +741,8 @@ void add(char *projectName, char *fileName)
     {
         sprintf(&str[i * 2], "%02x", (unsigned int)result[i]);
     }
-    write(manifestFD,projectName,strlen(projectName));
-    write(manifestFD,"/",1);
+    write(manifestFD, projectName, strlen(projectName));
+    write(manifestFD, "/", 1);
     write(manifestFD, fileName, strlen(fileName));
     write(manifestFD, " $A ", 4);
     write(manifestFD, "0 ", 2);
@@ -1002,8 +996,8 @@ void checkout(char *projectName)
     free(command);
     free(reads);
     //Creates the directory for the client
-    int tarFileBytes=getTotalBytes(socketFD);
-    makeFile(socketFD,"checkout.tar.gz",tarFileBytes);
+    int tarFileBytes = getTotalBytes(socketFD);
+    makeFile(socketFD, "checkout.tar.gz", tarFileBytes);
     system("tar -xzf checkout.tar.gz");
     remove("checkout.tar.gz");
     closeConnection(socketFD);
@@ -1303,6 +1297,9 @@ void push(char *projectName)
     free(manifestPath);
     //HAVE TO DELETE .COMMIT FILE HERE
     remove(commitFilePath);
+    free(commitFilePath);
+    free(name);
+    freeManifestStruct(commitMan);
     closeConnection(socketFD);
 }
 
@@ -1345,8 +1342,8 @@ void update(char *projectName)
     //Creates the linked list for both manifest files
     int serverManifestBytes = getTotalBytes(socketFD);
     Manifest *serverMan = createManifestStruct(socketFD, serverManifestBytes, projectName, 0, 1);
-    char* manifestPath=calloc(strlen(projectName)+strlen("/.Manifest")+1,1);
-    sprintf(manifestPath,"%s/.Manifest",projectName);
+    char *manifestPath = calloc(strlen(projectName) + strlen("/.Manifest") + 1, 1);
+    sprintf(manifestPath, "%s/.Manifest", projectName);
     int manifestFD = open(manifestPath, O_RDONLY);
     int clientManifestBytes = getFileSize(manifestFD);
     Manifest *clientMan = createManifestStruct(manifestFD, clientManifestBytes, projectName, 1, 1);
@@ -1367,9 +1364,9 @@ void update(char *projectName)
     sprintf(updateFilePath, "%s/.Update", projectName);
     sprintf(conflictFilePath, "%s/.Conflict", projectName);
     int updateFD = open(updateFilePath, O_RDWR | O_CREAT, 00777);
-    char* serverVersion=itoa(serverMan->manifestVersion);
-    write(updateFD,serverVersion,strlen(serverVersion));
-    write(updateFD,"\n",1);
+    char *serverVersion = itoa(serverMan->manifestVersion);
+    write(updateFD, serverVersion, strlen(serverVersion));
+    write(updateFD, "\n", 1);
     int conflictFD = open(conflictFilePath, O_RDWR | O_CREAT, 00777);
     //Writes to the .Update and .Conflict files files
     int isConflict = 0;
@@ -1496,7 +1493,7 @@ void update(char *projectName)
             case 3:
                 printf("D %s\n", updatePtr->fileName);
             }
-            updatePtr=updatePtr->next;
+            updatePtr = updatePtr->next;
         }
         close(updateFD);
         freeManifestStruct(updateMan);
@@ -1561,6 +1558,7 @@ void upgrade(char *projectName)
         free(status);
         closeConnection(socketFD);
     }
+    free(status);
     int updateFD = open(updateFilePath, O_RDONLY, 00777);
     sendFile(updateFD, socketFD);
     close(updateFD);
@@ -1570,31 +1568,33 @@ void upgrade(char *projectName)
     int manifestFD = open(manifestFilePath, O_RDONLY);
     Manifest *update = createManifestStruct(updateFD, getFileSize(updateFD), "", 0, 1);
     Manifest *man = createManifestStruct(manifestFD, getFileSize(manifestFD), "", 0, 1);
-    Node *commitptr = update->files;
+    Node *updatePtr = update->files;
     Node *manptr = man->files;
     man->manifestVersion++;
 
-    while (commitptr != NULL)
+    while (updatePtr != NULL)
     {
-        if (commitptr->code == 3)
+        if (updatePtr->code == 3)
         {
             //Remove file from the project
-            while (strcmp(manptr->fileName, commitptr->fileName) != 0)
+            while (strcmp(manptr->fileName, updatePtr->fileName) != 0)
                 manptr = manptr->next;
             manptr->fileName = "";
-            char *systemCall = malloc(strlen(commitptr->fileName) + 4);
-            sprintf(systemCall, "rm %s", commitptr->fileName);
+            char *systemCall = malloc(strlen(updatePtr->fileName) + 4);
+            sprintf(systemCall, "rm %s", updatePtr->fileName);
             int rmStatus = system(systemCall);
             free(systemCall);
         }
-        else if (commitptr->code == 1)
+        else if (updatePtr->code == 1)
         {
             //NEED TO TEST: add in commit
             Node *newFile = malloc(sizeof(Node));
-            newFile->fileName = malloc(strlen(commitptr->fileName));
-            newFile->hash = malloc(strlen(commitptr->hash));
-            strcpy(newFile->fileName, commitptr->fileName);
-            strcpy(newFile->hash, commitptr->hash);
+            newFile->fileName = malloc(strlen(updatePtr->fileName));
+            newFile->hash = malloc(strlen(updatePtr->hash)+1);
+            newFile->liveHash=malloc(strlen(updatePtr->hash)+1);
+            strcpy(newFile->liveHash,updatePtr->liveHash);
+            strcpy(newFile->fileName, updatePtr->fileName);
+            strcpy(newFile->hash, updatePtr->hash);
             newFile->code = 0;
             newFile->version = 0;
 
@@ -1605,22 +1605,23 @@ void upgrade(char *projectName)
         else
         {
             //Update hash, code, version
-            while (strcmp(manptr->fileName, commitptr->fileName) != 0)
+            while (strcmp(manptr->fileName, updatePtr->fileName) != 0)
                 manptr = manptr->next;
-            manptr->hash = commitptr->hash;
+            manptr->hash = updatePtr->hash;
             manptr->code = 0;
             manptr->version++;
         }
-        commitptr = commitptr->next;
+        updatePtr = updatePtr->next;
         manptr = man->files;
     }
     close(manifestFD);
     remove(manifestFilePath);
     manifestFD = open(manifestFilePath, O_CREAT | O_RDWR, 00777);
-    char* manVersion=itoa(update->manifestVersion);
+    char *manVersion = itoa(update->manifestVersion);
     printf("new man version and length: %s,%d\n", manVersion, strlen(manVersion));
     write(manifestFD, manVersion, strlen(manVersion));
-    write(manifestFD,"\n",1);
+    write(manifestFD, "\n", 1);
+    free(manVersion);
     //Write out new manifest file
     while (manptr != NULL)
     {
@@ -1639,11 +1640,17 @@ void upgrade(char *projectName)
         }
         manptr = manptr->next;
     }
-    int tarTotalBytes=getTotalBytes(socketFD);
-    makeFile(socketFD,"update.tar.gz",tarTotalBytes);
-    system("tar -xzf update.tar.gz");
+    int tarTotalBytes = getTotalBytes(socketFD);
+    if (tarTotalBytes != 0)
+    {
+        makeFile(socketFD, "update.tar.gz", tarTotalBytes);
+        system("tar -xzf update.tar.gz");
+        remove("update.tar.gz");
+    }
+    remove(updateFilePath);
+    free(updateFilePath);
+    closeConnection(socketFD);
 }
-
 
 void history(char *projectName)
 {
@@ -1652,7 +1659,7 @@ void history(char *projectName)
     {
         return;
     }
-    char *command = calloc(strlen("8") + strlen(projectName)+1, 1);
+    char *command = calloc(strlen("8") + strlen(projectName) + 1, 1);
     sprintf(command, "8%s", projectName);
     write(socketFD, command, strlen(command));
     free(command);
@@ -1671,12 +1678,12 @@ void history(char *projectName)
     }
     free(status);
     int totalBytes = getTotalBytes(socketFD);
-    printf("%d\n",totalBytes);
+    printf("%d\n", totalBytes);
     int bytesRead = 0;
     while (bytesRead < totalBytes)
     {
         int bytesToRead = min(totalBytes - bytesRead, 250);
-        char *file = calloc(bytesToRead+1, 1);
+        char *file = calloc(bytesToRead + 1, 1);
         bytesRead += read(socketFD, file, bytesToRead);
         printf("%s", file);
         free(file);
@@ -1685,23 +1692,25 @@ void history(char *projectName)
     return;
 }
 
-void rollback(char *projectName, char* ver)
+void rollback(char *projectName, char *ver)
 {
     int socketFD = checkConnection();
     if (socketFD == -1)
     {
         return;
     }
-    char *command = calloc(strlen("8") + strlen(projectName)+strlen(ver)+2, 1);
-    sprintf(command, "9%s %s ", ver,projectName);
+    char *command = calloc(strlen("8") + strlen(projectName) + strlen(ver) + 2, 1);
+    sprintf(command, "9%s %s ", ver, projectName);
     write(socketFD, command, strlen(command));
     char *status = calloc(2, 1);
     read(socketFD, status, 1);
+    free(command);
     if (atoi(status) == 0)
     {
         printf("Project not found on the server\n");
         free(status);
         closeConnection(socketFD);
+        return;
     }
     read(socketFD, status, 1);
     if (atoi(status) == 0)
@@ -1711,7 +1720,9 @@ void rollback(char *projectName, char* ver)
         closeConnection(socketFD);
         return;
     }
+    printf("Rollback Successful\n");
     free(status);
+    closeConnection(socketFD);
 }
 
 int main(int argc, char *argv[])
@@ -1782,7 +1793,7 @@ int main(int argc, char *argv[])
         }
         else if (strcmp("Rollback", argv[1]) == 0)
         {
-                rollback(argv[2],argv[3]);
+            rollback(argv[2], argv[3]);
         }
         else
         {
