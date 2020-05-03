@@ -1082,7 +1082,6 @@ void *clientServerInteract(void *socket_arg)
             i++;
         }
         printf("ROLLBACK VERSION: %s\n", version);
-        
         projectName = malloc(strlen(buffer)-strlen(version)-2);
         memcpy(projectName, &buffer[i+1], strlen(buffer)-strlen(version)-3);
         projectName[strlen(projectName)] = '\0';

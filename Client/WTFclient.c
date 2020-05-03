@@ -215,7 +215,6 @@ Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int is
                 }
                 else if (strcmp(name, "$R") == 0 || strcmp(name, "$D") == 0)
                 { //Remove
-                    printf("here\n");
                     ptr->code = 3;
                 }
                 else
@@ -267,7 +266,7 @@ Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int is
                     ptr->liveHash = calloc(strlen(ptr->hash) + 1, 1);
                     strcpy(ptr->liveHash, ptr->hash);
                 }
-                if (strcmp(ptr->liveHash, ptr->hash) != 0)
+                if (strcmp(ptr->liveHash, ptr->hash) != 0 && ptr->code!=1)
                 {
                     ptr->code = 2; //Modify
                 }
@@ -1134,7 +1133,7 @@ void commit(char *projectName)
     while (clientPtr != NULL)
     {
         printf("%s\n", clientPtr->fileName);
-        if (clientPtr != 0)
+        if (clientPtr->code != 0)
         {
             write(commitFD, clientPtr->fileName, strlen(clientPtr->fileName));
             write(commitFD, " ", 1);
@@ -1191,7 +1190,9 @@ void commit(char *projectName)
 }
 
 /**
- * TODO delete the .Commit file after push sucessful
+ * Pushes the code to the server. The client should forward a compressed version of all the files that need to be updated.
+ * @param projectName name of the project the push is being done on.
+ * Prints an error if the project does not exist on the server, or if no matching commit file exists
  * 
  */
 void push(char *projectName)
@@ -1204,7 +1205,7 @@ void push(char *projectName)
     }
     else if (ENOENT == errno)
     {
-        printf("Directory does not exist\n");
+        printf("Project does not exist\n");
         return;
     }
     char *commitFilePath = calloc(strlen(projectName) + strlen("/.Commit") + 1, 1);
@@ -1294,7 +1295,6 @@ void push(char *projectName)
     makeFile(socketFD, manifestPath, manifestSize);
     int manifestFD = open(manifestPath, O_CREAT, O_RDWR, 00777);
     free(manifestPath);
-    //HAVE TO DELETE .COMMIT FILE HERE
     remove(commitFilePath);
     free(commitFilePath);
     free(name);
@@ -1551,6 +1551,8 @@ void upgrade(char *projectName)
     free(command);
     char *status = calloc(2, 1);
     read(socketFD, status, 1);
+
+    //Makes sure the project exists on the server
     if (atoi(status) == 0)
     {
         printf("Project does not exist on the server\n");
@@ -1558,9 +1560,13 @@ void upgrade(char *projectName)
         closeConnection(socketFD);
     }
     free(status);
+
+    //Sends the update file to the server
     int updateFD = open(updateFilePath, O_RDONLY, 00777);
     sendFile(updateFD, socketFD);
     close(updateFD);
+
+    //Creates the structs for the manifest and update files
     updateFD = open(updateFilePath, O_RDONLY, 00777);
     char *manifestFilePath = calloc(strlen(projectName) + strlen("/.Manifest") + 1, 1);
     sprintf(manifestFilePath, "%s/.Manifest", projectName);
@@ -1570,7 +1576,7 @@ void upgrade(char *projectName)
     Node *updatePtr = update->files;
     Node *manptr = man->files;
     man->manifestVersion++;
-
+    //Goes throught both structs, and modifies the struct
     while (updatePtr != NULL)
     {
         if (updatePtr->code == 3)
@@ -1639,13 +1645,16 @@ void upgrade(char *projectName)
         }
         manptr = manptr->next;
     }
+    //Bytes of the tar file
     int tarTotalBytes = getTotalBytes(socketFD);
+    //Get the tar file if bytes is greater than 0
     if (tarTotalBytes != 0)
     {
         makeFile(socketFD, "update.tar.gz", tarTotalBytes);
         system("tar -xzf update.tar.gz");
         remove("update.tar.gz");
     }
+    //Free all the structs
     freeManifestStruct(update);
     freeManifestStruct(man);
     remove(updateFilePath);
@@ -1653,7 +1662,11 @@ void upgrade(char *projectName)
     free(updateFilePath);
     closeConnection(socketFD);
 }
-
+/**
+ * Prints out the history of a specific project. Does not require project to exist locally.
+ * This includes all adds, modifies, and removes done to the project
+ * @param projectName the name of the project
+ */
 void history(char *projectName)
 {
     int socketFD = checkConnection();
@@ -1693,7 +1706,12 @@ void history(char *projectName)
     closeConnection(socketFD);
     return;
 }
-
+/**
+ * Asks the server to go back to a previous version of a project
+ * @param projectName the name of the project
+ * @param ver the version of the project to return to
+ * Gives an error if the project is not found, or the requested version is higher then the current project version.
+ */
 void rollback(char *projectName, char *ver)
 {
     int socketFD = checkConnection();
