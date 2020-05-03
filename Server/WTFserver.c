@@ -377,6 +377,8 @@ int searchforCommit(char *path, int socket){
                 free(checkFile);
                 if (status == 0){
                     write(socket, "1", 1); //write to client - commit file found
+                    close(clientFD);
+                    
                     expireCommits(path); //Expire all other commits
                     
                     //Create a tar of the previous project before for backups
@@ -407,6 +409,7 @@ int searchforCommit(char *path, int socket){
                     free(tarPath);
                     free(tarCall);
                     free(makeBackup);
+                    free(version);
 
                     char* s = malloc(2);
                     char buffer[256];
@@ -418,6 +421,7 @@ int searchforCommit(char *path, int socket){
                         if (s[0] != ' ')
                             strcat(buffer, s);
                     } while (s[0] != ' ');
+                    free(s);
 
                     totalBytes = atoi(buffer);
                     printf("TOTALBYTES: %d\n", totalBytes);
@@ -564,8 +568,10 @@ void push(char *projectName, int socket){
                         Node *newFile = malloc(sizeof(Node));
                         newFile->fileName = malloc(strlen(commitptr->fileName));
                         newFile->hash = malloc(strlen(commitptr->hash));
+                        newFile->liveHash = malloc(strlen(commitptr->hash));
                         strcpy(newFile->fileName, commitptr->fileName);
                         strcpy(newFile->hash, commitptr->hash);
+                        strcpy(newFile->liveHash, newFile->hash);
                         newFile->code = 0;
                         newFile->version = 0;
                         if(manptr == NULL){
@@ -611,6 +617,7 @@ void push(char *projectName, int socket){
                     }
                     manptr = manptr->next;
                 }
+                close(manifestFD);
 
                 //Write out history of push into a .history file with new manifest version
                 char* historyFile = malloc(10+strlen(path));
@@ -640,6 +647,7 @@ void push(char *projectName, int socket){
                     commitptr = commitptr->next;
                 }
                 write(historyStatus, "\n", 1);
+                close(historyStatus);
                 
                 //Remove commit file - sent from the client
                 close(commitFD);
@@ -658,6 +666,7 @@ void push(char *projectName, int socket){
                 bytesRead = 0, bytesToRead = 0;
                 char manBuffer[256];
                 bzero(manBuffer,256);
+
                 //Send size of manifest file to client
                 sprintf(manBuffer,"%d", size);
                 write(socket,manBuffer,strlen(manBuffer));
@@ -674,9 +683,9 @@ void push(char *projectName, int socket){
                     write(socket,manBuffer,bytesToRead);
                 }
                 
-                // freeManifestStruct(man);
-                // freeManifestStruct(commit);
-                printf("free?\n");
+                freeManifestStruct(man);
+                freeManifestStruct(commit);
+                free(path);
                 close(manifestFD);
                 free(manVersion);
                 free(manifestFile);
@@ -813,12 +822,19 @@ void upgrade(char* projectName, int socket){
                 Node* updateptr = update->files;
                 char* tar = calloc(25,1);
                 strcat(tar,"tar -czvf update.tar.gz " );
+                int i = 0;
                 while(updateptr != NULL){
                     if(updateptr->code == 3)
                         continue;
+                    i++;
                     tar = addByteToString(tar, updateptr->fileName);
                     tar = addByteToString(tar, " ");
                     updateptr = updateptr->next;
+                }
+                if(i == 0){
+                    write(socket, "0", 1);
+                    write(socket, " ", 1);
+                    return;
                 }
 
                 if(system(tar)<0){
@@ -858,6 +874,7 @@ void upgrade(char* projectName, int socket){
                 freeManifestStruct(update);
                 free(tar);
                 free(tarSize);
+                system("rm .Update update.tar.gz");
                 closedir(cwd);
                 return;
             }
@@ -866,7 +883,6 @@ void upgrade(char* projectName, int socket){
     write(socket, "0", 1); //write to client - project not found
     closedir(cwd);
 }
-
 
 void rollback(char* projectName, int socket, char* version){
     char* projectPath = malloc(strlen(projectName)+3);
@@ -893,9 +909,10 @@ void rollback(char* projectName, int socket, char* version){
         close(tarFD);
         closedir(cwd);
         free(backup);
+        rmdir(projectPath);
 
         destroyProject(projectPath,socket);
-        char* untar = malloc(18 + strlen(version));
+        char* untar = malloc(17 + strlen(version));
         sprintf(untar, "tar -xzf %s.tar.gz", version);
         system(untar);
         free(untar);
@@ -904,9 +921,10 @@ void rollback(char* projectName, int socket, char* version){
         sprintf(rm, "%s.tar.gz", version);
         remove(rm);
         free(rm);
-
+        
     }else{
         write(socket,"0",1);
+        closedir(cwd);
     }
     free(projectPath);
 }
@@ -969,9 +987,10 @@ void checkout(char* projectName, int socket){
             write(socket, buffer, bytesToRead);
         }
         
+        free(tarSize);
         close(tarFD);
         remove("checkout.tar.gz");
-        closedir(cwd);
+        closedir(cwd);  
         free(tar);
         free(manifest);
         close(manFD);

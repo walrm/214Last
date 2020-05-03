@@ -62,9 +62,10 @@ void create(char* projectName, int socket){
 
     //Write to client that project has been successfully created on server side
     write(socket,"1",1); 
-
-    struct stat manStats;
+    
+    close(manifestFD);
     manifestFD = open(manifestPath, O_RDONLY);
+    struct stat manStats;
     if(stat(manifestPath,&manStats)<0){
         possibleError(socket,"ERROR reading manifest stats");
         return;
@@ -74,12 +75,12 @@ void create(char* projectName, int socket){
     int size = manStats.st_size; 
     int bytesRead = 0, bytesToRead = 0;
     char manBuffer[256];
+
     //Send size of manifest file to client
     sprintf(manBuffer,"%d", size);
     write(socket,manBuffer,strlen(manBuffer));
     write(socket," ",1);
     printf("manBuffer: %s\n",manBuffer);
-    printf("manBuffer size: %d\n", strlen(manBuffer));
 
     //Send manifest bytes to client
     while(size > bytesRead){
@@ -89,9 +90,11 @@ void create(char* projectName, int socket){
         write(socket,manBuffer,bytesToRead);
     }
     
+    printf("End of create\n");
     free(manifestPath);
     closedir(cwd);
     close(manifestFD);
+    return;
 }
 
 //Helper function for delete - recursively delete files and directories in project folder
@@ -400,6 +403,7 @@ void commit(char *projectName, int socket)
     write(socket, "0", 1);          //write to client - project does not exist
 }
 
+//Sends history file of commits to the client
 void history(char* projectName, int socket){
     DIR *cwd = opendir("./");
     struct dirent *currentINode = NULL;
