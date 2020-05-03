@@ -558,6 +558,7 @@ void push(char *projectName, int socket){
                         //Remove file from the project
                         while (manptr->fileName!=NULL && strcmp(manptr->fileName, commitptr->fileName) != 0)
                             manptr = manptr->next;
+                        free(manptr->fileName);
                         manptr->fileName = NULL;
                         char *systemCall = malloc(strlen(commitptr->fileName) + 4);
                         sprintf(systemCall, "rm %s", commitptr->fileName);
@@ -587,10 +588,8 @@ void push(char *projectName, int socket){
                         //Update hash, code, version
                         while (manptr->fileName!=NULL && strcmp(manptr->fileName, commitptr->fileName) != 0)
                             manptr = manptr->next;
-                        free(manptr->hash);
-                        manptr->hash = malloc(strlen(commitptr->hash)+1);
+                        bzero(manptr->hash,strlen(manptr->hash));
                         strcpy(manptr->hash, commitptr->hash);
-                        manptr->hash = commitptr->hash;
                         manptr->code = 0;
                         manptr->version++;
                     }
