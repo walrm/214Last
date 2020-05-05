@@ -266,7 +266,7 @@ Manifest *createManifestStruct(int fd, int totalBytes, char *projectName, int is
                     ptr->liveHash = calloc(strlen(ptr->hash) + 1, 1);
                     strcpy(ptr->liveHash, ptr->hash);
                 }
-                if (strcmp(ptr->liveHash, ptr->hash) != 0 && ptr->code!=1)
+                if (strcmp(ptr->liveHash, ptr->hash) != 0 && ptr->code != 1)
                 {
                     ptr->code = 2; //Modify
                 }
@@ -302,7 +302,10 @@ void freeFileStruct(Node *head)
     {
         freeFileStruct(head->next);
     }
-    free(head->fileName);
+    if (head->fileName != NULL)
+    {
+        free(head->fileName);
+    }
     free(head->hash);
     free(head->liveHash);
     free(head);
@@ -339,13 +342,13 @@ int checkConnection()
     }
     int configFD = open(".configure", O_RDONLY);
     int size = getFileSize(configFD);
-    char *fileInfo =calloc(size + 1,1);
+    char *fileInfo = calloc(size + 1, 1);
     //fileInfo="";
     read(configFD, fileInfo, size);
     char *space = strchr(fileInfo, ' ');
     int spacel = space - fileInfo;
-    char *ip = (char *)calloc(spacel + 1,1);
-    char *host = (char *)calloc(size - spacel +1,1);
+    char *ip = (char *)calloc(spacel + 1, 1);
+    char *host = (char *)calloc(size - spacel + 1, 1);
     memcpy(ip, &fileInfo[0], spacel);
     memcpy(host, &fileInfo[spacel + 1], size - spacel + 1);
 
@@ -385,7 +388,7 @@ int checkConnection()
         return -1;
     }
     write(sockfd, "Established Connection", 22);
-    char* reading=calloc(23,1);
+    char *reading = calloc(23, 1);
     read(sockfd, reading, 22);
     printf("%s\n", reading);
     free(reading);
@@ -408,11 +411,11 @@ void create(char *projectName)
         return;
     }
 
-    char *combined = calloc(strlen(projectName)+1,1);
+    char *combined = calloc(strlen(projectName) + 1, 1);
     strcat(combined, "5");
     strcat(combined, projectName);
     write(socketFD, combined, strlen(combined));
-    char* created=calloc(2,1);
+    char *created = calloc(2, 1);
 
     read(socketFD, created, 1);
     int c = atoi(created);
@@ -480,12 +483,12 @@ void destroy(char *projectName)
     {
         return;
     }
-    char *combined = calloc(strlen(projectName)+2,1);
+    char *combined = calloc(strlen(projectName) + 2, 1);
     strcat(combined, "6");
     strcat(combined, projectName);
     write(serverFD, combined, strlen(combined));
     free(combined);
-    char* passC=calloc(2,1);
+    char *passC = calloc(2, 1);
     //passC="";
     read(serverFD, passC, 1);
     int pass = atoi(passC);
@@ -527,7 +530,7 @@ void currentVersion(char *projectName)
         printf("Project does not exist on the server\n");
         return;
     }
-    char *gettingTotalBytes = calloc(2,1);
+    char *gettingTotalBytes = calloc(2, 1);
     char *i = malloc(10);
     bzero(i, 10);
     //Getting the total size of the file
@@ -549,7 +552,7 @@ void currentVersion(char *projectName)
     while (isFirstLine)
     {
         free(byteRead);
-        byteRead = calloc(2,1);
+        byteRead = calloc(2, 1);
         bytesRead += read(socketFD, byteRead, 1);
         if (byteRead[0] == '\n')
         {
@@ -1362,9 +1365,12 @@ void update(char *projectName)
     char *conflictFilePath = calloc(strlen(projectName) + strlen("/.Conflict") + 1, 1);
     sprintf(updateFilePath, "%s/.Update", projectName);
     sprintf(conflictFilePath, "%s/.Conflict", projectName);
+    remove(updateFilePath);
+    remove(conflictFilePath);
     int updateFD = open(updateFilePath, O_RDWR | O_CREAT, 00777);
     char *serverVersion = itoa(serverMan->manifestVersion);
     write(updateFD, serverVersion, strlen(serverVersion));
+    free(serverVersion);
     write(updateFD, "\n", 1);
     int conflictFD = open(conflictFilePath, O_RDWR | O_CREAT, 00777);
     //Writes to the .Update and .Conflict files files
@@ -1469,7 +1475,8 @@ void update(char *projectName)
         Node *conflictPtr = conflictMan->files;
         while (conflictPtr != NULL)
         {
-            printf("C %s", conflictPtr->fileName);
+            printf("C %s\n", conflictPtr->fileName);
+            conflictPtr=conflictPtr->next;
         }
         close(conflictFD);
         freeManifestStruct(conflictMan);
@@ -1496,6 +1503,7 @@ void update(char *projectName)
         }
         close(updateFD);
         freeManifestStruct(updateMan);
+        remove(conflictFilePath);
     }
     free(manifestPath);
     free(updateFilePath);
@@ -1524,17 +1532,29 @@ void upgrade(char *projectName)
         return;
     }
     char *updateFilePath = calloc(strlen(projectName) + strlen("/.Update") + 1, 1);
+    char *conflictFilePath=calloc(strlen(projectName)+strlen("/.Conflict")+1,1);
     sprintf(updateFilePath, "%s/.Update", projectName);
-
+    sprintf(conflictFilePath,"%s/.Conflict",projectName);
+    struct stat conflict_record;
+    int conflictFD=open(conflictFilePath,O_RDONLY);
+    if(conflictFD!=-1){
+        printf("Error: Fix conflicts\n");
+        free(updateFilePath);
+        free(conflictFilePath);
+        return;
+    }
+    free(conflictFilePath);
     struct stat stat_record;
     if (stat(updateFilePath, &stat_record))
     {
         printf("Update file does not exist\n");
+        free(updateFilePath);
         return;
     }
     else if (stat_record.st_size <= 1)
     {
         printf("Update file is empty\n");
+        free(updateFilePath);
         return;
     }
 
@@ -1582,9 +1602,10 @@ void upgrade(char *projectName)
         if (updatePtr->code == 3)
         {
             //Remove file from the project
-            while (strcmp(manptr->fileName, updatePtr->fileName) != 0)
+            while (manptr->fileName != NULL && strcmp(manptr->fileName, updatePtr->fileName) != 0)
                 manptr = manptr->next;
-            manptr->fileName = "";
+            free(manptr->fileName);
+            manptr->fileName = NULL;
             char *systemCall = malloc(strlen(updatePtr->fileName) + 4);
             sprintf(systemCall, "rm %s", updatePtr->fileName);
             int rmStatus = system(systemCall);
@@ -1595,24 +1616,31 @@ void upgrade(char *projectName)
             //NEED TO TEST: add in commit
             Node *newFile = malloc(sizeof(Node));
             newFile->fileName = malloc(strlen(updatePtr->fileName));
-            newFile->hash = malloc(strlen(updatePtr->hash)+1);
-            newFile->liveHash=malloc(strlen(updatePtr->hash)+1);
-            strcpy(newFile->liveHash,updatePtr->liveHash);
+            newFile->hash = malloc(strlen(updatePtr->hash));
+            newFile->liveHash = malloc(strlen(updatePtr->hash));
             strcpy(newFile->fileName, updatePtr->fileName);
             strcpy(newFile->hash, updatePtr->hash);
+            strcpy(newFile->liveHash, newFile->hash);
             newFile->code = 0;
             newFile->version = 0;
-
-            Node *temp = manptr->next;
-            manptr->next = newFile;
-            manptr->next->next = temp;
+            if (manptr == NULL)
+            {
+                man->files = newFile;
+            }
+            else
+            {
+                Node *temp = manptr->next;
+                manptr->next = newFile;
+                manptr->next->next = temp;
+            }
         }
         else
         {
             //Update hash, code, version
-            while (strcmp(manptr->fileName, updatePtr->fileName) != 0)
+            while (manptr->fileName != NULL && strcmp(manptr->fileName, updatePtr->fileName) != 0)
                 manptr = manptr->next;
-            manptr->hash = updatePtr->hash;
+            bzero(manptr->hash, strlen(manptr->hash));
+            strcpy(manptr->hash, updatePtr->hash);
             manptr->code = 0;
             manptr->version++;
         }
@@ -1630,7 +1658,7 @@ void upgrade(char *projectName)
     //Write out new manifest file
     while (manptr != NULL)
     {
-        if (strlen(manptr->fileName) != 0)
+        if (manptr->fileName != NULL)
         {
             write(manifestFD, manptr->fileName, strlen(manptr->fileName));
             write(manifestFD, " ", 1);
@@ -1657,6 +1685,7 @@ void upgrade(char *projectName)
     //Free all the structs
     freeManifestStruct(update);
     freeManifestStruct(man);
+    close(updateFD);
     remove(updateFilePath);
     free(manifestFilePath);
     free(updateFilePath);
