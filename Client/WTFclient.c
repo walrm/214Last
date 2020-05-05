@@ -325,6 +325,7 @@ int min(int a, int b)
     }
     return a;
 }
+
 /**
  * Looks for the .configure file. If it does not exist, prints an error.
  * If it does exist, it attempts to connect to the server 
@@ -854,7 +855,7 @@ void removeFile(char *projectName, char *fileName)
  */
 void configure(char *ip, char *port)
 {
-    int configFD = open(".configure", O_RDWR | O_CREAT | O_TRUNC, 00777);
+    int configFD = open("./.configure", O_RDWR | O_CREAT | O_TRUNC, 00777);
     write(configFD, ip, strlen(ip));
     write(configFD, " ", 1);
     write(configFD, port, strlen(port));
