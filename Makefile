@@ -4,5 +4,8 @@ all: Server/WTFserver.c Server/serverFunctions.o
 serverFunction.o: Server/serverFunctions.c
 	gcc -c Server/serverFunctions.c
 
+test: WTFTest.c
+	gcc -o WTFTest WTFTest.c
+
 clean:
 	rm Server/serverFunctions.o Server/WTFserver Client/WTF
