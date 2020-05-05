@@ -1643,7 +1643,7 @@ void upgrade(char *projectName)
             bzero(manptr->hash, strlen(manptr->hash));
             strcpy(manptr->hash, updatePtr->hash);
             manptr->code = 0;
-            manptr->version++;
+            manptr->version = updatePtr->version;
         }
         updatePtr = updatePtr->next;
         manptr = man->files;
