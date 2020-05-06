@@ -1120,7 +1120,7 @@ int main(int argc, char *argv[])
     pthread_t threadID;
 
     signal(SIGINT, stopServer);
-
+    signal(SIGSEGV, stopServer);
     //Client trying to connect and forks for each new client connecting
     printf("Waiting for Client Connection...\n");
     while (1)

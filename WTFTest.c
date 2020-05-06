@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 int main(int argc, char* argv[]){
     
@@ -7,13 +8,13 @@ int main(int argc, char* argv[]){
     int pid = fork();
     if(pid == 0){
         chdir("./Server");
-        system("./WTFserver 12345");
+        system("./WTFserver 1080");
         return 0;
     }else{
         chdir("./Client");
         
         //Test case 1 - Configure
-        system("./WTF Configure localhost 12345");
+        system("./WTF Configure localhost 1080");
         int x=system("diff .configure ../testCases/.configure");
         if(x){
             printf("Error in test 1\n");
@@ -82,7 +83,7 @@ int main(int argc, char* argv[]){
             printf("\nERROR IN TEST 5\n");
         }
         system("rm -r ./WTFTest ../Server/WTFTest");
-
+        printf("All Tests were successful\n");
         return 0;
     }
 }

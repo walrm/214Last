@@ -11,6 +11,7 @@
 #include <sys/stat.h>
 #include <math.h>
 #include <dirent.h>
+#include<sys/wait.h> 
 #include <errno.h>
 
 /**
@@ -380,13 +381,10 @@ int checkConnection()
     bcopy((char *)server->h_addr_list[0], (char *)&serv_addr.sin_addr.s_addr,
           server->h_length);
     serv_addr.sin_port = htons(portNum);
-    if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+    while (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
     {
-        free(ip);
-        free(host);
-        free(fileInfo);
-        printf("Error connecting to host\n");
-        return -1;
+        printf("Connecting to host...\n");
+        sleep(3);
     }
     write(sockfd, "Established Connection", 22);
     char *reading = calloc(23, 1);
